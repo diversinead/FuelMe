@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Font family variables — referenced by Tailwind font-display/body/mono utilities.
+   Fonts themselves load via <link> in layout.tsx (with display=swap fallbacks). */
+:root {
+  --font-display: "Manrope", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-fraunces: "Fraunces", Georgia, "Times New Roman", serif;
+}
+
+/* -------------------------------------------------------------------------
+   APP SHELL TOKENS  (dark default, light via [data-theme="light"])
+   Print routes scope their own tokens — do not touch.
+   ------------------------------------------------------------------------- */
+
+:root,
+[data-theme="dark"] {
+  /* Surfaces — layered grays with warm undertone */
+  --surface-0: #0a0a0b;
+  --surface-1: #131316;
+  --surface-2: #1c1c20;
+  --surface-3: #26262c;
+  --surface-4: #34343c;
+
+  /* Ink */
+  --ink-primary: #f4f4f5;
+  --ink-secondary: #a1a1aa;
+  --ink-tertiary: #71717a;
+  --ink-inverse: #0a0a0b;
+
+  /* Brand accent — burnt amber */
+  --accent: #f97316;
+  --accent-hover: #fb923c;
+  --accent-muted: rgba(249, 115, 22, 0.1);
+  --accent-ring: rgba(249, 115, 22, 0.25);
+
+  /* Session colours */
+  --session-easy: #65a30d;
+  --session-hard: #dc2626;
+  --session-long: #2563eb;
+  --session-rest: #6b7280;
+
+  /* Functional */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* Effects */
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-elevated: 0 4px 8px rgba(0, 0, 0, 0.4), 0 16px 48px rgba(0, 0, 0, 0.3);
+  --noise-opacity: 0.015;
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --surface-0: #fafaf9;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f4;
+  --surface-3: #e7e5e4;
+  --surface-4: #d6d3d1;
+
+  --ink-primary: #18181b;
+  --ink-secondary: #52525b;
+  --ink-tertiary: #71717a;
+  --ink-inverse: #fafaf9;
+
+  --accent: #ea580c;
+  --accent-hover: #c2410c;
+  --accent-muted: rgba(234, 88, 12, 0.08);
+  --accent-ring: rgba(234, 88, 12, 0.25);
+
+  --session-easy: #4d7c0f;
+  --session-hard: #b91c1c;
+  --session-long: #1d4ed8;
+  --session-rest: #57534e;
+
+  --border-subtle: rgba(0, 0, 0, 0.03);
+  --border-default: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.09);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-elevated: 0 4px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
+  --noise-opacity: 0;
+
+  color-scheme: light;
+}
+
+html,
+body {
+  background: var(--surface-0);
+  color: var(--ink-primary);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss03", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle noise grain — dark mode only */
+html[data-theme="dark"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  opacity: var(--noise-opacity);
+  z-index: 100;
+  mix-blend-mode: overlay;
+}
+
+/* Beautiful focus rings everywhere */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+  border-color: var(--accent);
+  transition: box-shadow 120ms ease-out;
+}
+
+::selection {
+  background: var(--accent-muted);
+  color: var(--ink-primary);
+}
+
+/* ------------------------------ Utilities ------------------------------ */
+
+.app-container {
+  max-width: 1240px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Hero card gradient wash */
+.hero-wash {
+  background:
+    radial-gradient(circle at top right, var(--accent-muted), transparent 60%),
+    var(--surface-1);
+}
+
+/* Session tags — fill at 15%, border 30%, text at full */
+.session-tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.session-tag.easy { color: var(--session-easy); background: color-mix(in srgb, var(--session-easy) 15%, transparent); border-color: color-mix(in srgb, var(--session-easy) 30%, transparent); }
+.session-tag.hard { color: var(--session-hard); background: color-mix(in srgb, var(--session-hard) 15%, transparent); border-color: color-mix(in srgb, var(--session-hard) 30%, transparent); }
+.session-tag.long { color: var(--session-long); background: color-mix(in srgb, var(--session-long) 15%, transparent); border-color: color-mix(in srgb, var(--session-long) 30%, transparent); }
+.session-tag.rest { color: var(--session-rest); background: color-mix(in srgb, var(--session-rest) 15%, transparent); border-color: color-mix(in srgb, var(--session-rest) 30%, transparent); }
+
+/* Macro pills */
+.macro-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0;
+}
+.macro-pill.carbs {
+  color: var(--session-long);
+  background: color-mix(in srgb, var(--session-long) 12%, transparent);
+}
+.macro-pill.protein {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+/* Section header (kept compatible for any usage in dark UI) */
+.section-header {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-secondary);
+}
+
+/* Reduced motion override */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
