@@ -4,9 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Printer, RotateCcw } from "lucide-react";
+import { ArrowLeft, Printer } from "lucide-react";
 import { getDb, type GroceryList } from "@/lib/db";
-import { mockGrocery } from "@/lib/mock";
 import { formatWeekRange } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -20,39 +19,106 @@ export default function GroceryPage({ params }: { params: { weekId: string } }) 
     async () => (await getDb().groceryLists.get(weekId)) ?? null,
     [weekId],
   );
-  const [seeding, setSeeding] = React.useState(false);
 
   if (list === undefined) return <Loading />;
 
   if (list === null) {
-    return (
-      <main className="app-container py-12 max-w-2xl">
-        <BackLink />
-        <h1 className="font-display text-display-lg text-ink mt-6">
-          No grocery list yet
-        </h1>
-        <p className="text-body-lg text-ink-secondary mt-3 mb-6">
-          AI grocery generation lands in Phase 4. Seed a mock list to click
-          through.
-        </p>
-        <Button
-          disabled={seeding}
-          onClick={async () => {
-            setSeeding(true);
-            try {
-              await getDb().groceryLists.put(mockGrocery(weekId));
-            } finally {
-              setSeeding(false);
-            }
-          }}
-        >
-          {seeding ? "Seeding…" : "Seed mock list"}
-        </Button>
-      </main>
-    );
+    return <GroceryEmptyState weekId={weekId} />;
   }
 
   return <GroceryView list={list} />;
+}
+
+function GroceryEmptyState({ weekId }: { weekId: string }) {
+  const [generating, setGenerating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function generate() {
+    setGenerating(true);
+    setError(null);
+    try {
+      const db = getDb();
+      const [plan, foodPrefs] = await Promise.all([
+        db.fuellingPlans.get(weekId),
+        db.foodPreferences.get("me"),
+      ]);
+
+      if (!plan) {
+        throw new Error(
+          "No fuelling plan for this week yet. Generate a plan first, then come back.",
+        );
+      }
+      if (!foodPrefs) {
+        throw new Error(
+          "Missing food preferences. Re-run onboarding before generating a grocery list.",
+        );
+      }
+
+      const response = await fetch("/api/grocery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fuellingPlan: plan,
+          foodPreferences: foodPrefs,
+          includeDinner: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          (errBody as { error?: string }).error ??
+            `Grocery list generation failed (HTTP ${response.status}).`,
+        );
+      }
+
+      const apiList = (await response.json()) as Omit<
+        GroceryList,
+        "id" | "weekId" | "generatedAt"
+      >;
+
+      await db.groceryLists.put({
+        ...apiList,
+        id: weekId,
+        weekId,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Grocery list generation failed.",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <main className="app-container py-12 max-w-2xl">
+      <BackLink weekId={weekId} />
+      <h1 className="font-display text-display-lg text-ink mt-6">
+        No grocery list yet
+      </h1>
+      <p className="text-body-lg text-ink-secondary mt-3 mb-6">
+        Generate a shopping list from this week&apos;s fuelling plan. Takes a
+        few seconds.
+      </p>
+      {error && (
+        <div
+          className="mb-4 p-3 rounded-button"
+          style={{
+            border:
+              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+          }}
+        >
+          <p className="text-body-sm text-danger leading-snug">{error}</p>
+        </div>
+      )}
+      <Button onClick={generate} disabled={generating}>
+        {generating ? "Generating…" : "Generate grocery list"}
+      </Button>
+    </main>
+  );
 }
 
 function GroceryView({ list }: { list: GroceryList }) {
@@ -87,17 +153,6 @@ function GroceryView({ list }: { list: GroceryList }) {
     await db.groceryLists.put(next);
   }
 
-  async function resetAll() {
-    const next: GroceryList = {
-      ...list,
-      categories: list.categories.map((c) => ({
-        ...c,
-        items: c.items.map((it) => ({ ...it, checked: false })),
-      })),
-    };
-    await db.groceryLists.put(next);
-  }
-
   const pct = totalItems === 0 ? 0 : (checkedItems / totalItems) * 100;
 
   return (
@@ -107,7 +162,7 @@ function GroceryView({ list }: { list: GroceryList }) {
       transition={{ duration: 0.24, ease: ease.out }}
       className="app-container py-8 md:py-12 max-w-3xl"
     >
-      <BackLink />
+      <BackLink weekId={list.weekId} />
 
       <header className="flex items-end justify-between gap-4 mt-6 mb-6 flex-wrap">
         <div>
@@ -120,10 +175,7 @@ function GroceryView({ list }: { list: GroceryList }) {
             {list.includeDinner ? "Includes dinner" : "Breakfast → afternoon only"}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={resetAll}>
-            <RotateCcw size={14} /> Reset
-          </Button>
+        <div className="flex gap-2 flex-wrap">
           <Link href={`/grocery/${list.weekId}/print?auto=1`} target="_blank">
             <Button variant="secondary" size="sm">
               <Printer size={14} /> Print
@@ -267,13 +319,13 @@ function GroceryView({ list }: { list: GroceryList }) {
   );
 }
 
-function BackLink() {
+function BackLink({ weekId }: { weekId: string }) {
   return (
     <Link
-      href="/dashboard"
+      href={`/plan/${weekId}`}
       className="inline-flex items-center gap-1 font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-ink"
     >
-      <ArrowLeft size={12} /> Dashboard
+      <ArrowLeft size={12} /> Fuelling plan
     </Link>
   );
 }

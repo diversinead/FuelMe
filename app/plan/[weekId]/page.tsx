@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Printer, RefreshCw, ShoppingBag, X } from "lucide-react";
@@ -144,6 +145,73 @@ function PlanView({
     DEFAULT_PROTEIN_TARGET_G_PER_KG,
   );
   const [editTargetsOpen, setEditTargetsOpen] = React.useState(false);
+  const [groceryNavigating, setGroceryNavigating] = React.useState(false);
+  const [groceryError, setGroceryError] = React.useState<string | null>(null);
+
+  const router = useRouter();
+
+  // Single-click "Grocery" flow from the plan:
+  //  - no list yet            → generate, save, navigate
+  //  - list older than plan   → regenerate (plan has changed), save, navigate
+  //  - list newer than plan   → just navigate
+  async function goToGrocery() {
+    setGroceryNavigating(true);
+    setGroceryError(null);
+    try {
+      const db = getDb();
+      const existing = await db.groceryLists.get(plan.weekId);
+      const isStale =
+        !!existing && existing.generatedAt < plan.generatedAt;
+      if (existing && !isStale) {
+        router.push(`/grocery/${plan.weekId}`);
+        return;
+      }
+
+      const foodPrefs = await db.foodPreferences.get("me");
+      if (!foodPrefs) {
+        throw new Error(
+          "Missing food preferences. Re-run onboarding before generating a grocery list.",
+        );
+      }
+
+      const response = await fetch("/api/grocery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fuellingPlan: plan,
+          foodPreferences: foodPrefs,
+          includeDinner: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          (errBody as { error?: string }).error ??
+            `Grocery list generation failed (HTTP ${response.status}).`,
+        );
+      }
+
+      const apiList = (await response.json()) as Omit<
+        import("@/lib/db").GroceryList,
+        "id" | "weekId" | "generatedAt"
+      >;
+
+      await db.groceryLists.put({
+        ...apiList,
+        id: plan.weekId,
+        weekId: plan.weekId,
+        generatedAt: new Date().toISOString(),
+      });
+
+      router.push(`/grocery/${plan.weekId}`);
+    } catch (e) {
+      setGroceryError(
+        e instanceof Error ? e.message : "Grocery list generation failed.",
+      );
+      setGroceryNavigating(false);
+    }
+  }
   const weightKg = profile?.weightKg ?? 0;
   const targetsAtDefault =
     easyCarb[0] === DEFAULT_CARB_TARGETS_G_PER_KG.easy[0] &&
@@ -453,12 +521,31 @@ function PlanView({
         >
           <RefreshCw size={12} /> Regenerate
         </Button>
-        <Link href={`/grocery/${plan.weekId}`}>
-          <Button size="sm" className="h-7 px-2.5 text-mono-sm gap-1.5">
-            <ShoppingBag size={12} /> Grocery
-          </Button>
-        </Link>
+        <Button
+          size="sm"
+          onClick={goToGrocery}
+          disabled={groceryNavigating}
+          className="h-7 px-2.5 text-mono-sm gap-1.5"
+        >
+          <ShoppingBag size={12} />{" "}
+          {groceryNavigating ? "Generating…" : "Grocery"}
+        </Button>
       </div>
+
+      {groceryError && (
+        <div
+          className="mt-3 p-3 rounded-button"
+          style={{
+            border:
+              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+          }}
+        >
+          <p className="text-body-sm text-danger leading-snug">
+            {groceryError}
+          </p>
+        </div>
+      )}
 
       {/* Mobile: day-by-day */}
       <div className="md:hidden mt-7">
