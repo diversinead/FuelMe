@@ -52,6 +52,7 @@ export interface SubSession {
   id: string;
   label?: string;          // e.g. "AM", "PM", "Track"
   type: SessionType;
+  customType?: string;     // free-text override (e.g. "Gym chest day"); takes precedence over type label
   distanceKm?: number;     // primary fuelling signal
   durationMin?: number;    // secondary context
 }

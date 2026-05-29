@@ -111,6 +111,13 @@ export default function DashboardPage() {
                 {data.trainingWeek
                   ? `${sessionsCount} session${sessionsCount === 1 ? "" : "s"} planned`
                   : "No training entered yet"}
+                {" · "}
+                <Link
+                  href="/settings?tab=training"
+                  className="font-mono text-mono-sm uppercase tracking-widest text-accent hover:text-accent-hover"
+                >
+                  Edit training
+                </Link>
               </p>
             </div>
             <div className="flex gap-2 flex-wrap">

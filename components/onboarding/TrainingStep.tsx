@@ -9,10 +9,8 @@ import type {
   SubSession,
   TrainingWeek,
 } from "@/lib/db";
-import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { SessionTag } from "@/components/shared/SessionTag";
 import {
@@ -301,32 +299,21 @@ function EditForm({
 }) {
   return (
     <div className="space-y-3">
-      {/* Row 1: Label + Type */}
-      <div className="grid grid-cols-12 gap-2">
-        <div className="col-span-12 sm:col-span-4">
-          <Label dense>Label</Label>
-          <Input
-            value={session.label ?? ""}
-            onChange={(e) => onUpdate({ label: e.target.value })}
-            placeholder={
-              totalSessions > 1 ? (index === 0 ? "AM" : "PM") : "Optional"
-            }
+      {/* Row 1: AM/PM (compact) + Type (free-text + preset suggestions) */}
+      <div className="flex items-end gap-2 flex-wrap">
+        <div className="shrink-0">
+          <Label dense>When</Label>
+          <AmPmToggle
+            value={session.label}
+            onChange={(label) => onUpdate({ label })}
           />
         </div>
-        <div className="col-span-12 sm:col-span-8">
+        <div className="flex-1 min-w-[160px]">
           <Label dense>Type</Label>
-          <Select
-            value={session.type}
-            onChange={(e) =>
-              onUpdate({ type: e.target.value as SessionType })
-            }
-          >
-            {SELECTABLE_SUB_SESSION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {SESSION_LABELS[t]}
-              </option>
-            ))}
-          </Select>
+          <TypeInput
+            session={session}
+            onUpdate={onUpdate}
+          />
         </div>
       </div>
 
@@ -342,7 +329,6 @@ function EditForm({
             onChange={(n) => onUpdate({ distanceKm: n })}
             placeholder="10"
             suffix="km"
-            hideSteppers
           />
         </div>
         <div className="flex-1 min-w-0">
@@ -355,7 +341,6 @@ function EditForm({
             onChange={(n) => onUpdate({ durationMin: n })}
             placeholder="60"
             suffix="min"
-            hideSteppers
           />
         </div>
         <button
@@ -386,5 +371,130 @@ function EditForm({
         </button>
       </div>
     </div>
+  );
+}
+
+function AmPmToggle({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (label: string | undefined) => void;
+}) {
+  const chip =
+    "px-2.5 inline-flex items-center justify-center rounded-[5px] " +
+    "font-mono text-mono-sm uppercase tracking-widest transition-colors duration-150";
+  const active = "bg-accent text-ink-inverse";
+  const inactive = "text-ink-secondary hover:text-ink";
+
+  function pick(next: "AM" | "PM") {
+    onChange(value === next ? undefined : next);
+  }
+
+  return (
+    <div className="inline-flex h-9 items-stretch rounded-button border border-border bg-surface-2 p-0.5 gap-0.5">
+      <button
+        type="button"
+        onClick={() => pick("AM")}
+        aria-pressed={value === "AM"}
+        className={cn(chip, value === "AM" ? active : inactive)}
+      >
+        AM
+      </button>
+      <button
+        type="button"
+        onClick={() => pick("PM")}
+        aria-pressed={value === "PM"}
+        className={cn(chip, value === "PM" ? active : inactive)}
+      >
+        PM
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Free-text type input with a datalist of preset session types.
+ * Typing an exact preset label sets the underlying SessionType (driving
+ * the chip colour). Typing anything else stores it as customType and
+ * defaults the underlying type to "cross" for fuelling intensity.
+ */
+function TypeInput({
+  session,
+  onUpdate,
+}: {
+  session: SubSession;
+  onUpdate: (patch: Partial<SubSession>) => void;
+}) {
+  const presetByLabel = React.useMemo(() => {
+    const m = new Map<string, SessionType>();
+    for (const t of SELECTABLE_SUB_SESSION_TYPES) {
+      m.set(SESSION_LABELS[t].toLowerCase(), t);
+    }
+    return m;
+  }, []);
+
+  const external = session.customType ?? SESSION_LABELS[session.type];
+  const [draft, setDraft] = React.useState(external);
+  const focusedRef = React.useRef(false);
+
+  // Sync from external state only when the field isn't being edited.
+  React.useEffect(() => {
+    if (!focusedRef.current) setDraft(external);
+  }, [external]);
+
+  function commit() {
+    const value = draft.trim();
+    if (!value) {
+      // Fall back to "Easy" rather than letting the field go blank.
+      onUpdate({ type: "easy", customType: undefined });
+      setDraft(SESSION_LABELS["easy"]);
+      return;
+    }
+    const preset = presetByLabel.get(value.toLowerCase());
+    if (preset) {
+      onUpdate({ type: preset, customType: undefined });
+      setDraft(SESSION_LABELS[preset]);
+    } else {
+      onUpdate({ type: "cross", customType: value });
+    }
+  }
+
+  const listId = React.useId();
+
+  return (
+    <>
+      <input
+        list={listId}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={(e) => {
+          focusedRef.current = true;
+          e.currentTarget.select();
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        placeholder="Easy, intervals, gym…"
+        autoComplete="off"
+        className={cn(
+          "w-full h-9 bg-surface-2 text-ink placeholder:text-ink-tertiary",
+          "border border-border rounded-button px-3 py-1.5",
+          "text-body-sm focus:border-accent",
+        )}
+      />
+      <datalist id={listId}>
+        {SELECTABLE_SUB_SESSION_TYPES.map((t) => (
+          <option key={t} value={SESSION_LABELS[t]} />
+        ))}
+      </datalist>
+    </>
   );
 }

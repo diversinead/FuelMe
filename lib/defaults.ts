@@ -60,6 +60,7 @@ export function newSubSession(partial: Partial<SubSession> = {}): SubSession {
     id: subSessionId(),
     label: partial.label,
     type: partial.type ?? "easy",
+    customType: partial.customType,
     distanceKm: partial.distanceKm,
     durationMin: partial.durationMin,
   };
@@ -72,7 +73,7 @@ function fmtKm(km: number): string {
 export function describeSub(s: SubSession): string {
   const parts: string[] = [];
   if (s.label?.trim()) parts.push(s.label.trim());
-  parts.push(SESSION_LABELS[s.type]);
+  parts.push(s.customType?.trim() || SESSION_LABELS[s.type]);
   if (s.distanceKm != null) parts.push(fmtKm(s.distanceKm));
   if (s.durationMin != null) parts.push(`${s.durationMin} min`);
   return parts.join(" ");

@@ -5,6 +5,7 @@ Phase 1 complete and verified. Onboarding → IndexedDB → dashboard flow works
 Design language from DESIGN.md applied across all current screens.
 
 ## Next session
+Before starting phase 2 
 Start Phase 2 (print views). Do NOT skip ahead to AI integration.
 Per SPEC.md §7, Phase 2 ports the two reference HTML files into print routes:
 - /plan/[weekId]/print
@@ -14,7 +15,7 @@ Per SPEC.md §7, Phase 2 ports the two reference HTML files into print routes:
   from DESIGN.md.
 
 ## Known issues / deferred
-- In "This week's training" section - rather than "Label" display a toggle to select AM or PM
+-
 
 ## Known cosmetic issues to address before Phase 2
 - none
