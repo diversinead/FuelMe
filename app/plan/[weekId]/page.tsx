@@ -143,6 +143,7 @@ function PlanView({
   const [proteinTarget, setProteinTarget] = React.useState<[number, number]>(
     DEFAULT_PROTEIN_TARGET_G_PER_KG,
   );
+  const [editTargetsOpen, setEditTargetsOpen] = React.useState(false);
   const weightKg = profile?.weightKg ?? 0;
   const targetsAtDefault =
     easyCarb[0] === DEFAULT_CARB_TARGETS_G_PER_KG.easy[0] &&
@@ -295,16 +296,17 @@ function PlanView({
 
   // Esc to close whichever modal is open.
   React.useEffect(() => {
-    if (!regenOpen && editingKey === null) return;
+    if (!regenOpen && editingKey === null && !editTargetsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (editingKey !== null) closeEdit();
+      else if (editTargetsOpen) setEditTargetsOpen(false);
       else closeRegen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regenOpen, regenerating, editingKey, savingEdit]);
+  }, [regenOpen, regenerating, editingKey, savingEdit, editTargetsOpen]);
 
   async function handleRegenerate() {
     setRegenerating(true);
@@ -404,45 +406,36 @@ function PlanView({
           </h1>
         </div>
 
-        <div className="space-y-2">
-          {/* Carbs */}
-          <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs">
-            <GroupLabel color="var(--macro-carbs)">Carbs</GroupLabel>
-            <SubTarget
-              label="Easy"
-              range={easyCarb}
-              onChange={setEasyCarb}
-              step={0.5}
-              weightKg={weightKg}
+        <div className="flex items-center gap-4 flex-wrap text-body-sm text-ink-secondary">
+          <span className="inline-flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ background: "var(--macro-carbs)" }}
             />
-            <SubTarget
-              label="Hard"
-              range={hardCarb}
-              onChange={setHardCarb}
-              step={0.5}
-              weightKg={weightKg}
+            <span className="font-mono tabular-nums">
+              Carbs {Math.round(easyCarb[0] * weightKg)}–
+              {Math.round(hardCarb[1] * weightKg)} g
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ background: "var(--macro-protein)" }}
             />
-          </div>
-          {/* Protein */}
-          <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs">
-            <GroupLabel color="var(--macro-protein)">Protein</GroupLabel>
-            <SubTarget
-              range={proteinTarget}
-              onChange={setProteinTarget}
-              step={0.1}
-              weightKg={weightKg}
-              gramSuffix="g/day"
-            />
-            {!targetsAtDefault && (
-              <button
-                type="button"
-                onClick={resetTargets}
-                className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-ink"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+            <span className="font-mono tabular-nums">
+              Protein {Math.round(proteinTarget[0] * weightKg)}–
+              {Math.round(proteinTarget[1] * weightKg)} g/day
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setEditTargetsOpen(true)}
+            className="font-mono text-mono-sm uppercase tracking-widest text-accent hover:text-accent-hover"
+          >
+            Edit targets
+          </button>
         </div>
       </header>
 
@@ -769,6 +762,131 @@ function PlanView({
                   disabled={regenerating}
                 >
                   {regenerating ? "Generating…" : "Regenerate"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit targets modal */}
+      <AnimatePresence>
+        {editTargetsOpen && (
+          <motion.div
+            key="edit-targets-overlay"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setEditTargetsOpen(false)}
+              aria-hidden
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-targets-title"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 4 }}
+              transition={{ duration: 0.18, ease: ease.out }}
+              className="relative w-full max-w-md rounded-card bg-surface-1 border border-border p-6 shadow-elevated"
+            >
+              <div className="flex items-start justify-between gap-3 mb-5">
+                <div>
+                  <h2
+                    id="edit-targets-title"
+                    className="font-display text-display-sm text-ink"
+                  >
+                    Edit targets
+                  </h2>
+                  <p className="text-body-sm text-ink-secondary mt-1">
+                    g/kg ranges by day type. Used on the next regenerate.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditTargetsOpen(false)}
+                  aria-label="Close"
+                  className="shrink-0 -mt-1 -mr-1 p-1 text-ink-tertiary hover:text-ink rounded"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Carbs */}
+                <div>
+                  <div className="inline-flex items-center gap-2 mb-2">
+                    <span
+                      aria-hidden
+                      className="inline-block w-2 h-2 rounded-full"
+                      style={{ background: "var(--macro-carbs)" }}
+                    />
+                    <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+                      Carbs
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <SubTarget
+                      label="Easy"
+                      range={easyCarb}
+                      onChange={setEasyCarb}
+                      step={0.5}
+                      weightKg={weightKg}
+                    />
+                    <SubTarget
+                      label="Hard"
+                      range={hardCarb}
+                      onChange={setHardCarb}
+                      step={0.5}
+                      weightKg={weightKg}
+                    />
+                  </div>
+                </div>
+
+                {/* Protein */}
+                <div>
+                  <div className="inline-flex items-center gap-2 mb-2">
+                    <span
+                      aria-hidden
+                      className="inline-block w-2 h-2 rounded-full"
+                      style={{ background: "var(--macro-protein)" }}
+                    />
+                    <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+                      Protein
+                    </span>
+                  </div>
+                  <SubTarget
+                    range={proteinTarget}
+                    onChange={setProteinTarget}
+                    step={0.1}
+                    weightKg={weightKg}
+                    gramSuffix="g/day"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-between gap-2">
+                {!targetsAtDefault ? (
+                  <button
+                    type="button"
+                    onClick={resetTargets}
+                    className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-ink"
+                  >
+                    Reset to defaults
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => setEditTargetsOpen(false)}
+                >
+                  Done
                 </Button>
               </div>
             </motion.div>
