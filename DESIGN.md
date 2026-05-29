@@ -1,10 +1,10 @@
 # DESIGN ADDENDUM — In-App Visual Language
 
-**This document amends SPEC.md. Apply these changes to all in-app screens (onboarding, dashboard, plan editor, grocery list interactive view, check-in, settings). The print views (`/plan/[weekId]/print` and `/grocery/[weekId]/print`) remain UNCHANGED — they keep the editorial aesthetic from the reference HTML files.**
+**This document amends SPEC.md. It is the source of truth for the visual language across the in-app screens (onboarding, dashboard, plan editor, grocery list interactive view, check-in, settings) AND the print routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`).**
 
-Two visual languages, two different jobs:
-- **App shell** (this doc) — dark, sporty, premium. The athlete's daily tool.
-- **Print views** (unchanged) — editorial, warm, paper-feel. The deliverable.
+One visual language, two surfaces:
+- **App shell** — dark by default, sporty, premium. The athlete's daily tool.
+- **Print routes** — same minimal language on white paper. Light-mode tokens scoped under `.sheet`, A4 `@page` rules. The editorial Fraunces direction from the original `/reference/*.html` files has been retired; those files are kept only as design history.
 
 ---
 
@@ -49,11 +49,24 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --accent-muted: #14b8a61a;    /* 10% accent for backgrounds, badges */
   --accent-ring: #14b8a640;     /* 25% for focus rings */
 
-  /* Session colours — pulled forward from the print sheet but recalibrated for dark mode */
+  /* Session tag colours — used by SessionTag, dashboard chips, training editor */
   --session-easy: #65a30d;       /* lime-700 — easy days */
   --session-hard: #dc2626;       /* red-600 — intervals/threshold */
   --session-long: #2563eb;       /* blue-600 — long runs */
   --session-rest: #6b7280;       /* gray-500 — rest days */
+  --session-custom: #f97316;     /* orange — free-text customType (Gym, Pilates, …) */
+
+  /* Macro accents — used inline in the plan grid (no chip background) */
+  --macro-carbs: #FAC775;        /* warm amber */
+  --macro-protein: #5DCAA5;      /* forest mint */
+
+  /* Session pills (plan grid day header) — light-tinted bg + bright text for dark mode */
+  --session-pill-neutral-bg: var(--surface-3);
+  --session-pill-neutral-fg: var(--ink-secondary);
+  --session-pill-hard-bg: rgba(220, 38, 38, 0.15);
+  --session-pill-hard-fg: #fca5a5;
+  --session-pill-long-bg: rgba(37, 99, 235, 0.18);
+  --session-pill-long-fg: #93c5fd;
 
   /* Functional */
   --success: #10b981;
@@ -94,6 +107,17 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --session-hard: #b91c1c;
   --session-long: #1d4ed8;
   --session-rest: #57534e;
+  --session-custom: #ea580c;
+
+  --macro-carbs: #BA7517;
+  --macro-protein: #0F6E56;
+
+  --session-pill-neutral-bg: var(--surface-3);
+  --session-pill-neutral-fg: var(--ink-secondary);
+  --session-pill-hard-bg:    #FCEBEB;
+  --session-pill-hard-fg:    #791F1F;
+  --session-pill-long-bg:    #E6F1FB;
+  --session-pill-long-fg:    #0C447C;
 
   --border-subtle: #00000008;
   --border-default: #00000010;
@@ -108,22 +132,24 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
 
 ## 3. Typography
 
-Three families, each with a specific job. Keep Fraunces for the print views only — the app shell uses a more modern stack.
+Three families, each with a specific job. Used across both app shell and print routes.
 
 ```css
 /* Display & headings — strong, slightly condensed, athletic */
---font-display: 'Söhne', 'Inter Tight', 'Manrope', system-ui, sans-serif;
+--font-display: 'Manrope', system-ui, sans-serif;
 
 /* Body */
 --font-body: 'Inter', system-ui, sans-serif;
 
-/* Numbers, labels, monospace data — keep JetBrains Mono (already loaded for print views) */
+/* Numbers, labels, monospace data */
 --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
 ```
 
-**Practical setup — `<link>` tag, not `next/font/google`:**
+Söhne is paid (Klim Type Foundry); **Manrope** is the free substitute — same compact, slightly geometric athletic feel.
 
-Söhne is paid (Klim Type Foundry). Use **Manrope** as the free substitute — same compact, slightly geometric athletic feel.
+**Fraunces is no longer loaded.** It powered the original editorial-Fraunces direction in `/reference/*.html`; that direction was retired when the print routes pivoted to the minimal in-app language. Remove the `&family=Fraunces:…` segment from the `<link>` URL in `app/layout.tsx`.
+
+**Practical setup — `<link>` tag, not `next/font/google`:**
 
 `next/font/google` fetches at compile time and **hangs the dev server when `fonts.gstatic.com` is slow or unreachable**. We load the font stylesheets via `<link>` in `app/layout.tsx` instead — async, browser-side, with system-font fallbacks (declared in `globals.css`) so the page never blocks:
 
@@ -132,12 +158,12 @@ Söhne is paid (Klim Type Foundry). Use **Manrope** as the free substitute — s
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
 <link
-  href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
   rel="stylesheet"
 />
 ```
 
-The font-family CSS variables (`--font-display`, `--font-body`, `--font-mono`, `--font-fraunces`) are declared in `globals.css` with system-font fallbacks. `app/fonts.ts` is a comment-only file documenting this decision.
+The font-family CSS variables (`--font-display`, `--font-body`, `--font-mono`) are declared in `globals.css` with system-font fallbacks. `app/fonts.ts` is a comment-only file documenting this decision.
 
 **Type scale** (Tailwind extends in `tailwind.config.ts`):
 
@@ -205,24 +231,45 @@ Headings use `font-display`. Body uses `font-body`. All numbers, badges, time st
 - Remove × on hover, fades in
 - Add via Enter key or comma
 
-### Session tags (carry through from print but darker-mode optimised)
-- Easy: background `--session-easy` at 15% opacity, text `--session-easy`, border `1px solid currentColor` at 30%
-- Hard: same pattern with `--session-hard`
-- Long: same pattern with `--session-long`
+### Session tags (per-sub-session colour pills)
+- Used by `SessionTag` in: dashboard hero day chips, training-editor day card headers, plan-grid day-header row (via `SessionPill` variant mapping)
+- Five variants driven by `SubSession.type` (plus `customLabel` for free-text `customType`):
+  - **Easy** / `cross`: background `--session-easy` at 15% opacity, text `--session-easy`, border `1px solid currentColor` at 30%
+  - **Hard** (intervals / threshold / tempo / race): same pattern with `--session-hard`
+  - **Long**: same pattern with `--session-long`
+  - **Rest**: same pattern with `--session-rest`
+  - **Custom** (anything with `customType` set, e.g. "Gym"): same pattern with `--session-custom` — orange. Renders the free-text label instead of the preset name.
 - `font-mono`, 10px, uppercase, letter-spacing 0.08em
 - Padding `3px 8px`, radius `4px`
 
-### Macro pills (in-app version — distinct from print)
-- Inline-flex, `font-mono` 11px
-- Carbs: `--session-long` text colour on `--session-long` 12% background
-- Protein: `--accent` text colour on `--accent-muted` background
-- Radius `4px`, padding `2px 7px`
+### Macro numbers (in-grid)
+- Inline coloured numbers, no chip background, no `C`/`P` letter prefix, no `g` units in the plan grid
+- Font: `font-mono`, 10–11px depending on context (10px in plan-grid meal cells, 11px in legend, 13px in totals row)
+- Carbs: `color: var(--macro-carbs)` (warm amber)
+- Protein: `color: var(--macro-protein)` (forest mint)
+- `<MacroPill kind="carbs|protein" value={n} />` is still exported for any future "show units" context, but the plan grid renders bare numbers directly inline.
+
+### Session pills (plan-grid day header)
+- Used only in the plan-grid day-header row to indicate the day's session intensity (mapped from `DayTotal.tag`)
+- Three variants — neutral (easy / easy+ / rest), hard (intervals / threshold / tempo / race), long
+- Each uses paired `--session-pill-{variant}-bg` and `--session-pill-{variant}-fg` tokens
+- `font-mono`, 10px, uppercase, letter-spacing 0.08em, padding `1px 6px`, radius `3px`
+- Distinct from `SessionTag` (used in the dashboard hero day-chip column + training editor for per-sub-session colour-coding)
 
 ### Navigation
 - Top app bar: `--surface-0` background, `--border-subtle` bottom border, `64px` tall, sticky
 - Logo wordmark: `font-display`, 18px, weight 800, slight negative tracking
 - Nav links: `font-mono` 11px uppercase letter-spacing 0.1em
 - Active link: small `--accent` underline 2px
+- AppBar hides itself on `/*/print` routes via a `pathname.endsWith('/print')` check.
+
+### Plan grid
+- CSS Grid: `gridTemplateColumns: '88px repeat(7, minmax(0, 1fr))'` — narrow label column + 7 equal day columns
+- Borders: 0.5px hairlines using `--border-default`. Horizontal between every row; vertical only on day-column left edges (label column has no left border). No bottom border on the totals row, no border on the rules footer (separated by its own 0.5px top border).
+- Day header row: `MON`–`SUN` mono uppercase tertiary, with a session pill below (see "Session pills" above).
+- Meal cells: `flex flex-col justify-between`, `min-height: 88px` on desktop. Food at top (13px ink, 1.45 line-height), macros bottom-right (10px mono, two coloured numbers).
+- Totals row: leftmost `Total` label, then per-day coloured number pair (13px font-medium mono, right-aligned).
+- Rules footer: `grid-cols-3 gap-8` of rule label + 12px secondary text, no card chrome.
 
 ---
 
@@ -310,11 +357,14 @@ export const ease = {
 - **Right column (1/3 width):** stacked smaller cards — "Last week's wins" (top 1–2 bullets from AI feedback with empty-state fallback), "Up next" CTA card that flips between "Do this week's check-in" and "Plan next week" based on check-in status.
 - **History feed at the bottom:** vertical list of past weeks with status pills and dates.
 
-### Plan editor (on-screen, not print)
-- **Mobile (default <768px):** swipeable day-by-day. One day per screen, large day name + session tag at top, 5 meal cards stacked. Swipe left/right to change day. Dots indicator at bottom.
-- **Desktop (≥768px):** weekly grid as in spec, but darker — `--surface-1` cells with `--border-default` dividers, session row uses coloured tags. Critical meals get a 2px left border in `--accent`, not red.
-- **Edit interaction:** tap any meal → bottom sheet on mobile, popover on desktop. Same form fields either way.
-- Toolbar above the grid: monospace "Week of [date]", action buttons (Print · Regenerate · Grocery List) right-aligned.
+### Plan editor (on-screen)
+See **SPEC §4.3** for the full layout. Visual notes:
+- **Top utility row:** "← Dashboard" back-link left, action buttons right (Print · Regenerate · Grocery).
+- **Header strip:** tiny `WEEK OF MON 2 JUN` mono tertiary label + `Fuelling plan` 20px title (weight 500, ink). Right side: macro legend with two 8px coloured dots (`--macro-carbs`, `--macro-protein`) and target ranges.
+- **Plan grid:** see "Plan grid" component pattern in §4.
+- **Mobile (default <768px):** day-by-day, swipeable / tabbed. 7 day-buttons across the top, tapping selects. Below, 5 stacked `MealCard`s for the selected day, then a `DayTotalRow`. Each `MealCard`: slot label tiny mono tertiary, food at 15px ink, coloured macro numbers right-aligned.
+- **Edit interaction (Phase 3+):** tap any meal → bottom sheet on mobile, popover on desktop. Same form fields either way: food, note, macros, isCritical.
+- **What is *not* rendered in the cell (but lives in the data model):** `meal.note` (reserved for popover surfacing later), `meal.isCritical` (no left-accent border for now).
 
 ### Grocery list (on-screen)
 - **Mobile-first.** Single column, sticky category headers (`--surface-2` background, `font-mono` uppercase).
@@ -435,6 +485,8 @@ After Claude Code applies this, the app should pass these visual tests:
 - [ ] Cards have visible but subtle borders, not heavy shadcn defaults
 - [ ] Page transitions fade + slide, not instant snap
 - [ ] Focus states show the teal ring, not browser default
-- [ ] Print routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`) are COMPLETELY UNCHANGED — still editorial Fraunces + cream background
+- [ ] Print routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`) render on white paper with Manrope + JetBrains Mono, hairline borders, light-tinted session pills, amber/green macro numbers — same minimal language as the in-app view
+- [ ] No reference to Fraunces in `app/layout.tsx` `<link>` or anywhere in `globals.css` (the `/reference/*.html` files retain it only as historical artefacts)
+- [ ] Macro numbers in the plan grid render as bare coloured digits (no `C`/`P` letters, no `g` units, no chip background)
 
 If any of these fail, fix before declaring this addendum complete.

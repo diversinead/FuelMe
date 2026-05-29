@@ -5,34 +5,51 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Printer, RefreshCw, ShoppingBag } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import {
   getDb,
   type Day,
+  type DayTag,
   type FuellingPlan,
   type MealSlot,
   type PlannedMeal,
 } from "@/lib/db";
 import { mockPlan } from "@/lib/mock";
-import { formatWeekRange } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
-import { SectionHeader } from "@/components/shared/SectionHeader";
-import { MacroPill } from "@/components/shared/MacroPill";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
 const DAYS: Day[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SLOTS: { slot: MealSlot; label: string; time: string }[] = [
-  { slot: "breakfast", label: "Breakfast", time: "Pre-AM" },
-  { slot: "post_am", label: "Post-AM", time: "Within 30 min" },
-  { slot: "lunch", label: "Lunch", time: "12 – 1 pm" },
-  { slot: "afternoon", label: "Afternoon", time: "Pre-PM run" },
-  { slot: "dinner", label: "Dinner", time: "Post-PM" },
+const SLOTS: { slot: MealSlot; label: string }[] = [
+  { slot: "breakfast", label: "Breakfast" },
+  { slot: "post_am",   label: "Post-AM" },
+  { slot: "lunch",     label: "Lunch" },
+  { slot: "afternoon", label: "Afternoon" },
+  { slot: "dinner",    label: "Dinner" },
 ];
+
+type PillVariant = "neutral" | "hard" | "long";
+
+function pillVariantFor(tag: DayTag | undefined): PillVariant {
+  if (tag === "hard") return "hard";
+  if (tag === "long") return "long";
+  return "neutral"; // easy | easy+ | rest | undefined
+}
+
+function pillLabelFor(tag: DayTag | undefined): string {
+  switch (tag) {
+    case "easy":  return "Easy";
+    case "easy+": return "Easy+";
+    case "hard":  return "Hard";
+    case "long":  return "Long";
+    case "rest":  return "Rest";
+    default:      return "Rest";
+  }
+}
 
 export default function PlanPage({ params }: { params: { weekId: string } }) {
   const { weekId } = params;
-
   const plan = useLiveQuery(
     async () => (await getDb().fuellingPlans.get(weekId)) ?? null,
     [weekId],
@@ -45,12 +62,9 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
     return (
       <main className="app-container py-12 max-w-2xl">
         <BackLink />
-        <h1 className="font-display text-display-lg text-ink mt-6">
-          No plan yet
-        </h1>
+        <h1 className="font-display text-display-lg text-ink mt-6">No plan yet</h1>
         <p className="text-body-lg text-ink-secondary mt-3 mb-6">
-          AI plan generation lands in Phase 3. For now, seed a mock plan to
-          click through the flow.
+          AI plan generation lands in Phase 3. Seed a mock plan to click through.
         </p>
         <Button
           disabled={seeding}
@@ -74,8 +88,23 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
 
 function PlanView({ plan }: { plan: FuellingPlan }) {
   const [mobileDayIdx, setMobileDayIdx] = React.useState(0);
+  const [reseeding, setReseeding] = React.useState(false);
   const mealLookup = new Map<string, PlannedMeal>();
   for (const m of plan.meals) mealLookup.set(`${m.day}:${m.slot}`, m);
+
+  const weekDate = format(parseISO(plan.weekId), "EEE d MMM");
+
+  // Dev convenience while mock data evolves: overwrite the stored plan with
+  // a fresh copy of mockPlan() so updates to lib/mock.ts actually surface.
+  // Will be replaced by the real /api/plan call in Phase 3.
+  async function reseedMock() {
+    setReseeding(true);
+    try {
+      await getDb().fuellingPlans.put(mockPlan(plan.weekId));
+    } finally {
+      setReseeding(false);
+    }
+  }
 
   return (
     <motion.main
@@ -84,59 +113,54 @@ function PlanView({ plan }: { plan: FuellingPlan }) {
       transition={{ duration: 0.24, ease: ease.out }}
       className="app-container py-8 md:py-12"
     >
-      <BackLink />
-
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-6 mb-8">
-        <div>
-          <CardLabel>Week of {plan.weekId}</CardLabel>
-          <h1 className="font-display text-display-xl text-ink mt-1 leading-none">
-            Plan
-          </h1>
-          <p className="text-body-lg text-ink-secondary mt-2">
-            {formatWeekRange(plan.weekId)} · Eat for the work.
-          </p>
-        </div>
+      {/* Top utility row: back link + actions */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <BackLink />
         <div className="flex gap-2 flex-wrap">
           <Link href={`/plan/${plan.weekId}/print?auto=1`} target="_blank">
-            <Button variant="secondary">
-              <Printer size={16} /> Print
+            <Button variant="secondary" size="sm">
+              <Printer size={14} /> Print
             </Button>
           </Link>
-          <Button variant="secondary" disabled>
-            <RefreshCw size={16} /> Regenerate (Phase 3)
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={reseedMock}
+            disabled={reseeding}
+            title="Overwrite the stored plan with the current mock data. Phase 3 replaces this with a real AI regenerate."
+          >
+            <RefreshCw size={14} /> {reseeding ? "Re-seeding…" : "Re-seed mock"}
           </Button>
           <Link href={`/grocery/${plan.weekId}`}>
-            <Button>
-              <ShoppingBag size={16} /> Grocery
+            <Button size="sm">
+              <ShoppingBag size={14} /> Grocery
             </Button>
           </Link>
+        </div>
+      </div>
+
+      {/* Header strip — title left, macro legend right */}
+      <header className="flex items-end justify-between gap-6 mt-8 pb-5 border-b-[0.5px] border-border-default flex-wrap">
+        <div>
+          <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+            Week of {weekDate}
+          </div>
+          <h1 className="text-[20px] font-medium text-ink mt-1 leading-none">
+            Fuelling plan
+          </h1>
+        </div>
+        <div className="flex items-center gap-5 text-body-sm text-ink-secondary">
+          <LegendDot color="var(--macro-carbs)">
+            Carbs {plan.targets.carbsRangeG} g
+          </LegendDot>
+          <LegendDot color="var(--macro-protein)">
+            Protein {plan.targets.proteinRangeG}
+          </LegendDot>
         </div>
       </header>
 
-      {/* Targets + rules */}
-      <Card className="mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-          <div className="flex flex-wrap gap-6">
-            <Target label="Carbs target" value={`${plan.targets.carbsRangeG} g`} />
-            <Target label="Protein target" value={plan.targets.proteinRangeG} />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {plan.rules.map((r, i) => (
-            <div key={i} className="flex gap-3 items-start">
-              <span className="font-mono text-mono-sm uppercase tracking-widest text-accent whitespace-nowrap pt-0.5">
-                Rule {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className="text-body-sm text-ink-secondary leading-snug">
-                {r}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       {/* Mobile: day-by-day */}
-      <div className="md:hidden">
+      <div className="md:hidden mt-7">
         <div className="flex gap-2 overflow-x-auto pb-3 mb-4 -mx-5 px-5">
           {DAYS.map((d, i) => (
             <button
@@ -154,165 +178,196 @@ function PlanView({ plan }: { plan: FuellingPlan }) {
           ))}
         </div>
         <div className="space-y-3">
-          {SLOTS.map((row) => {
-            const meal = mealLookup.get(`${DAYS[mobileDayIdx]}:${row.slot}`);
-            return (
-              <MealCard
-                key={row.slot}
-                slotLabel={row.label}
-                time={row.time}
-                meal={meal}
-              />
-            );
-          })}
+          {SLOTS.map((row) => (
+            <MealCard
+              key={row.slot}
+              slotLabel={row.label}
+              meal={mealLookup.get(`${DAYS[mobileDayIdx]}:${row.slot}`)}
+            />
+          ))}
           <DayTotalRow
             total={plan.dayTotals.find((t) => t.day === DAYS[mobileDayIdx])}
           />
         </div>
       </div>
 
-      {/* Desktop: weekly grid */}
-      <div className="hidden md:block">
-        <Card className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[900px]">
-              <thead>
-                <tr>
-                  <th className="bg-surface-2 px-3 py-3 text-left w-28 border-b border-border-subtle"></th>
-                  {DAYS.map((d) => (
-                    <th
-                      key={d}
-                      className="bg-surface-2 text-left px-3 py-3 font-mono text-mono-sm uppercase tracking-widest text-ink-secondary border-b border-l border-border-subtle"
-                    >
-                      {d}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {SLOTS.map((row, ri) => (
-                  <tr
-                    key={row.slot}
-                    className={cn(ri > 0 && "border-t border-border-subtle")}
+      {/* Desktop grid */}
+      <div className="hidden md:block mt-7">
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "88px repeat(7, minmax(0, 1fr))" }}
+        >
+          {/* corner */}
+          <div className="border-b-[0.5px] border-border-default" />
+
+          {/* day headers */}
+          {DAYS.map((d) => {
+            const total = plan.dayTotals.find((t) => t.day === d);
+            return (
+              <div
+                key={d}
+                className="px-3 pb-3 border-b-[0.5px] border-l-[0.5px] border-border-default"
+              >
+                <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+                  {d.toUpperCase()}
+                </div>
+                <div className="mt-1.5">
+                  <SessionPill variant={pillVariantFor(total?.tag)}>
+                    {pillLabelFor(total?.tag)}
+                  </SessionPill>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* meal rows */}
+          {SLOTS.map((row) => (
+            <React.Fragment key={row.slot}>
+              <div className="px-2 py-4 border-b-[0.5px] border-border-default flex items-start">
+                <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+                  {row.label}
+                </span>
+              </div>
+              {DAYS.map((d) => {
+                const meal = mealLookup.get(`${d}:${row.slot}`);
+                return (
+                  <div
+                    key={d}
+                    className="px-3 py-4 border-b-[0.5px] border-l-[0.5px] border-border-default flex flex-col justify-between min-h-[88px]"
                   >
-                    <td className="bg-surface-2/40 px-3 py-3 align-top w-28 border-r border-border-subtle">
-                      <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-                        {row.label}
-                      </div>
-                      <div className="text-body-sm text-ink-secondary mt-1">
-                        {row.time}
-                      </div>
-                    </td>
-                    {DAYS.map((d) => {
-                      const meal = mealLookup.get(`${d}:${row.slot}`);
-                      return (
-                        <td
-                          key={d}
-                          className={cn(
-                            "align-top px-3 py-3 border-l border-border-subtle text-body-sm leading-snug",
-                            meal?.isCritical &&
-                              "border-l-2 border-l-accent",
-                          )}
-                        >
-                          {meal ? (
-                            <>
-                              <div className="text-ink">{meal.food}</div>
-                              {meal.note && (
-                                <div className="text-body-sm text-ink-tertiary mt-1">
-                                  {meal.note}
-                                </div>
-                              )}
-                              <div className="flex gap-1.5 mt-2 flex-wrap">
-                                <MacroPill kind="carbs" value={meal.carbsG} />
-                                <MacroPill kind="protein" value={meal.proteinG} />
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-ink-tertiary">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-                {/* Totals */}
-                <tr className="border-t border-border">
-                  <td className="bg-surface-2/40 px-3 py-3 border-r border-border-subtle">
-                    <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-                      Day total
-                    </div>
-                  </td>
-                  {DAYS.map((d) => {
-                    const t = plan.dayTotals.find((x) => x.day === d);
-                    return (
-                      <td
-                        key={d}
-                        className="px-3 py-3 border-l border-border-subtle"
-                      >
-                        <div className="font-mono text-body text-ink">
-                          {t?.carbsG ?? "—"}<span className="text-ink-tertiary"> g C</span>
+                    {meal ? (
+                      <>
+                        <div className="text-[13px] text-ink leading-[1.45]">
+                          {meal.food}
                         </div>
-                        <div className="font-mono text-body-sm text-accent mt-0.5">
-                          {t?.proteinG ?? "—"}<span className="opacity-70"> g P</span>
+                        <div className="flex justify-end gap-2.5 mt-3 text-[11px] font-mono">
+                          <span style={{ color: "var(--macro-carbs)" }}>
+                            {meal.carbsG}
+                          </span>
+                          <span style={{ color: "var(--macro-protein)" }}>
+                            {meal.proteinG}
+                          </span>
                         </div>
-                        <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary mt-1">
-                          {t?.tag}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            </table>
+                      </>
+                    ) : (
+                      <span className="text-body-sm text-ink-tertiary">—</span>
+                    )}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+
+          {/* totals row */}
+          <div className="px-2 py-4 flex items-center">
+            <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+              Total
+            </span>
           </div>
-        </Card>
+          {DAYS.map((d) => {
+            const t = plan.dayTotals.find((x) => x.day === d);
+            return (
+              <div
+                key={d}
+                className="px-3 py-4 border-l-[0.5px] border-border-default flex justify-end items-center gap-2.5 text-[13px] font-medium font-mono"
+              >
+                <span style={{ color: "var(--macro-carbs)" }}>
+                  {t?.carbsG ?? "—"}
+                </span>
+                <span style={{ color: "var(--macro-protein)" }}>
+                  {t?.proteinG ?? "—"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rules footer */}
+        {plan.rules.length > 0 && (
+          <div className="mt-7 pt-7 border-t-[0.5px] border-border-default grid grid-cols-3 gap-8">
+            {plan.rules.map((rule, i) => (
+              <div key={i}>
+                <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+                  Rule {String(i + 1).padStart(2, "0")}
+                </div>
+                <p className="text-[12px] text-ink-secondary mt-2 leading-[1.5]">
+                  {rule}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </motion.main>
   );
 }
 
-function Target({ label, value }: { label: string; value: string }) {
+function LegendDot({
+  color,
+  children,
+}: {
+  color: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-        {label}
-      </div>
-      <div className="font-mono text-display-sm text-ink mt-0.5">{value}</div>
-    </div>
+    <span className="inline-flex items-center gap-2">
+      <span
+        aria-hidden
+        className="inline-block w-2 h-2 rounded-full"
+        style={{ background: color }}
+      />
+      {children}
+    </span>
+  );
+}
+
+function SessionPill({
+  variant,
+  children,
+}: {
+  variant: PillVariant;
+  children: React.ReactNode;
+}) {
+  const styles: Record<PillVariant, React.CSSProperties> = {
+    neutral: {
+      background: "var(--session-pill-neutral-bg)",
+      color: "var(--session-pill-neutral-fg)",
+    },
+    hard: {
+      background: "var(--session-pill-hard-bg)",
+      color: "var(--session-pill-hard-fg)",
+    },
+    long: {
+      background: "var(--session-pill-long-bg)",
+      color: "var(--session-pill-long-fg)",
+    },
+  };
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded font-mono text-[10px] uppercase tracking-wider"
+      style={styles[variant]}
+    >
+      {children}
+    </span>
   );
 }
 
 function MealCard({
   slotLabel,
-  time,
   meal,
 }: {
   slotLabel: string;
-  time: string;
   meal: PlannedMeal | undefined;
 }) {
   return (
-    <Card
-      className={cn(
-        "py-4 px-4",
-        meal?.isCritical && "border-l-2 border-l-accent",
-      )}
-    >
-      <div className="flex items-baseline justify-between">
-        <CardLabel>{slotLabel}</CardLabel>
-        <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-          {time}
-        </span>
-      </div>
+    <Card className="py-4 px-4">
+      <CardLabel>{slotLabel}</CardLabel>
       {meal ? (
         <>
-          <p className="text-body text-ink mt-2">{meal.food}</p>
-          {meal.note && (
-            <p className="text-body-sm text-ink-tertiary mt-1">{meal.note}</p>
-          )}
-          <div className="flex gap-1.5 mt-3 flex-wrap">
-            <MacroPill kind="carbs" value={meal.carbsG} />
-            <MacroPill kind="protein" value={meal.proteinG} />
+          <p className="text-[14px] text-ink mt-2 leading-[1.45]">{meal.food}</p>
+          <div className="flex justify-end gap-3 mt-3 text-[12px] font-mono">
+            <span style={{ color: "var(--macro-carbs)" }}>{meal.carbsG}</span>
+            <span style={{ color: "var(--macro-protein)" }}>{meal.proteinG}</span>
           </div>
         </>
       ) : (
@@ -325,28 +380,17 @@ function MealCard({
 function DayTotalRow({
   total,
 }: {
-  total: { day: Day; carbsG: number; proteinG: number; tag: string } | undefined;
+  total: { day: Day; carbsG: number; proteinG: number; tag: DayTag } | undefined;
 }) {
   if (!total) return null;
   return (
-    <Card className="bg-surface-2 py-4 px-4">
-      <CardLabel>Day total</CardLabel>
-      <div className="flex items-baseline gap-4 mt-2">
-        <div>
-          <div className="font-mono text-display-sm text-ink leading-none">
-            {total.carbsG}
-            <span className="text-ink-tertiary text-body-sm"> g C</span>
-          </div>
+    <Card className="bg-surface-2 py-3 px-4">
+      <div className="flex items-center justify-between">
+        <CardLabel>Total</CardLabel>
+        <div className="flex gap-4 text-body font-mono font-medium">
+          <span style={{ color: "var(--macro-carbs)" }}>{total.carbsG}</span>
+          <span style={{ color: "var(--macro-protein)" }}>{total.proteinG}</span>
         </div>
-        <div>
-          <div className="font-mono text-display-sm text-accent leading-none">
-            {total.proteinG}
-            <span className="opacity-70 text-body-sm"> g P</span>
-          </div>
-        </div>
-        <span className="ml-auto font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-          {total.tag}
-        </span>
       </div>
     </Card>
   );

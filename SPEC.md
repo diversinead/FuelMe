@@ -10,10 +10,10 @@ This document is the complete brief. Build it in the order given. Do not skip ah
 
 - **Framework:** Next.js 14 (App Router), TypeScript, React 18
 - **Styling:** Tailwind CSS + hand-built UI primitives in `components/ui/*` (same API surface as shadcn — Button, Card, Input, Textarea, RadioGroup, Checkbox, Select, Label, NumberInput, ChipInput — but no generator dependency). See DESIGN.md for the full app-shell language.
-- **Fonts:** Manrope (display) + Inter (body) + JetBrains Mono (mono) for the app shell; Fraunces (serif) reserved for the print routes. Loaded via `<link>` in `app/layout.tsx` (not `next/font/google` — see DESIGN.md §3 for rationale).
+- **Fonts:** Manrope (display) + Inter (body) + JetBrains Mono (mono) — used across both the app shell and the print routes. Loaded via `<link>` in `app/layout.tsx` (not `next/font/google` — see DESIGN.md §3 for rationale).
 - **Local data:** Dexie.js (IndexedDB wrapper). All user data lives on-device for now.
 - **AI:** OpenAI GPT-4o-mini via Next.js Route Handlers (`/api/*`). Key in `OPENAI_API_KEY` env var, **never exposed to client**.
-- **PDF/print:** Native `window.print()` against print-styled routes — the reference HTML files already print beautifully, just replicate that approach.
+- **PDF/print:** Native `window.print()` against client-rendered print-styled routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`). These pages share the in-app minimal visual language, scoped under `.sheet` to override the dark shell and print on white paper.
 - **PWA:** Add `next-pwa` so users can "Add to Home Screen" and use offline.
 - **Deployment target:** Vercel.
 
@@ -23,36 +23,46 @@ This document is the complete brief. Build it in the order given. Do not skip ah
 
 ## 2. Design language
 
-The two reference HTML files (`fueling-plan-print.html`, `weekly-grocery-list.html`) define the **print** visual identity (editorial, warm, paper-feel). The in-app shell (everything *not* under `/plan/[weekId]/print` or `/grocery/[weekId]/print`) uses a separate dark visual language defined in **DESIGN.md** — Whoop/Linear-adjacent, dark by default, teal accent.
+The in-app shell uses the dark visual language defined in **DESIGN.md** — Whoop/Linear-adjacent, dark by default, teal accent.
 
-The tokens below apply **only** to the print routes. They are scoped under `.sheet` in `styles/print-plan.ts` and `styles/print-grocery.ts` so they don't collide with the app-shell tokens.
+Both **print routes** (`/plan/[weekId]/print`, `/grocery/[weekId]/print`) share the same minimal language as the in-app views, rendered on white paper: Manrope + JetBrains Mono fonts, hairline borders, light-tinted session pills, amber/green inline macro numbers. The CSS lives in `styles/print-plan.ts` and `styles/print-grocery.ts`, scoped under `.sheet` so its overrides (white background, light-mode tokens, A4 `@page` rules) don't leak into the dark app shell.
 
-**Print-route CSS variables:**
+**Historical:** the `/reference/fueling-plan-print.html` and `/reference/weekly-grocery-list.html` files were the original editorial-Fraunces direction (cream paper, dense serif tables). They are retained for reference only — the live print routes no longer mirror them and have moved to the minimal in-app language.
+
+**Print-route CSS variables** (light-mode only; print is always white paper, declared inside `.sheet`):
 
 ```css
---ink: #000;
---ink-soft: #444;
---paper: #fff;
---bg-warm: #f0e9da;
---bg-soft: #f1eee7;
---accent-easy: #4a7a2e;    /* easy session — green */
---accent-hard: #9c3815;    /* hard/interval/threshold — rust */
---accent-long: #2e5285;    /* long run — blue */
---divider: #999;
+--ink: #18181b;
+--ink-secondary: #52525b;
+--ink-tertiary: #71717a;
+--paper: #ffffff;
+--border: #d4d4d8;
+
+/* Macros — amber for carbs, forest for protein. Print well in colour and B&W. */
+--macro-carbs: #BA7517;
+--macro-protein: #0F6E56;
+
+/* Session pills — light tints, dark text */
+--session-pill-neutral-bg: #f4f4f5;
+--session-pill-neutral-fg: #52525b;
+--session-pill-hard-bg:    #FCEBEB;
+--session-pill-hard-fg:    #791F1F;
+--session-pill-long-bg:    #E6F1FB;
+--session-pill-long-fg:    #0C447C;
 ```
 
 **Print-route type:**
-- Headings & body: Fraunces (400, 600, 800 + italic)
-- Labels, tags, monospace numbers (macros, quantities): JetBrains Mono (400, 500, 700)
+- Headings & body: Manrope (500, 600), Inter (400, 500) — same as app shell
+- Labels, tags, numbers (macros, quantities, slot labels): JetBrains Mono (400, 500, 600)
 
-**Print-route components that must look exactly like the reference:**
-- Section headers — black bar, white uppercase JetBrains Mono text, tight letter-spacing
-- Session tags — small uppercase pills in `--accent-*` colours
-- Macro "pills" — small monospace numbers with carbs/protein labels
-- Checkbox lists with warm cream background and ruled dividers
-- "Notes" boxes — cream background, numbered rules in rust monospace
+**Print-route component patterns (mirror the in-app):**
+- Header strip: tiny `Week of [date]` mono-uppercase label + 20px title + macro legend with 8px coloured dots
+- Plan grid: 88px label column + 7 day columns, 0.5px hairline borders, no vertical column dividers in the rules footer; meal cells render food top, macros bottom-right (amber + green numbers, no units)
+- Grocery list: 2-column layout (CSS columns), mono uppercase category headers with a 0.5px underline, checkbox squares (filled black when `checked`), item name + amber qty + italic tertiary note
+- Session pills: light-tinted bg + dark text, `JetBrains Mono` 8.5px uppercase
+- Macro check / notes: simple tables and labelled bullet rows, no card backgrounds
 
-For the rest of the app (forms, dashboard, plan editor, grocery list, check-in, settings), see **DESIGN.md** — dark surfaces, teal accent, Manrope display, Inter body, JetBrains Mono for all numbers and labels.
+For the in-app shell — dark surfaces, teal accent, layered grey tokens — see **DESIGN.md**.
 
 ---
 
@@ -217,9 +227,9 @@ Routes (App Router):
 /onboarding             3-step wizard: profile → food prefs → first week's training
 /dashboard              Current week overview + CTAs
 /plan/[weekId]          View/edit the fuelling plan
-/plan/[weekId]/print    Print-styled, identical to fueling-plan-print.html
+/plan/[weekId]/print    Print-styled, minimal language on white paper (§4.3)
 /grocery/[weekId]       Interactive grocery list with checkboxes
-/grocery/[weekId]/print Print-styled, identical to weekly-grocery-list.html
+/grocery/[weekId]/print Print-styled, minimal language on white paper (§4.4)
 /checkin/[weekId]       Week-end check-in form + AI feedback
 /settings               Edit profile, food prefs
 ```
@@ -276,31 +286,52 @@ Layout per **DESIGN.md §8** — 2/3 + 1/3 asymmetric grid on desktop, stacked o
 
 ### 4.3 Plan view (`/plan/[weekId]`)
 
-On-screen this should be a **rich, editable** version of the print sheet.
+Minimal, scannable. The visual hierarchy is: food at the top of each cell, macros at the bottom, with everything else stripped back to thin labels and hairline borders.
 
-- Header: "Weekly Fuelling Plan" + subtitle + targets (right side, monospace)
-- 3-rule box ("Rule 01 — Eat for the work" etc.)
-- Main table: rows = meals (Breakfast, Post-AM, Lunch, Afternoon, Dinner) × cols = days
-- Each cell shows: food string, optional note, carbs pill, protein pill
-- **Inline editing**: click a cell → edit food/note/macros in a popover (shadcn `Popover` + form)
-- Day totals row at bottom
-- Top-right actions: "Print", "Regenerate", "Generate grocery list", "Edit"
-- On regenerate: open dialog asking what changed (training, prefs, or "just retry")
+**Layout (desktop, ≥768px):**
 
-**Print route `/plan/[weekId]/print`:** render the exact HTML/CSS structure from `fueling-plan-print.html`, populated from the FuellingPlan. Use a print-only layout (no app chrome). Trigger `window.print()` on mount if `?auto=1`.
+- **Top utility row:** "← Dashboard" back link left, action buttons right (Print · Regenerate · Grocery).
+- **Header strip:** tiny `Week of [Mon 2 Jun]` mono-uppercase label, then `Fuelling plan` title in 20px weight-500 ink. On the right side of the same row, two 8px coloured dots followed by `Carbs 190–325 g` and `Protein 1.6–1.8 g/kg`. Carb dot = `--macro-carbs`, protein dot = `--macro-protein`. A 0.5px `--border-default` bottom border separates the header from the grid.
+- **The grid** (CSS Grid, `gridTemplateColumns: 88px repeat(7, minmax(0, 1fr))`):
+  - **Header row:** each day cell shows the day abbreviation (`MON`, `TUE`, …) in mono uppercase tertiary grey, then a small **session pill** below it. Pill variants:
+    - Easy / Easy+ / Rest → neutral (`--session-pill-neutral-bg/-fg`)
+    - Hard / Intervals / Threshold → hard variant (light red bg, dark red text)
+    - Long → long variant (light blue bg, dark blue text)
+  - **Meal rows:** leftmost column shows the slot name (`Breakfast`, `Post-AM`, `Lunch`, `Afternoon`, `Dinner`) in mono uppercase tertiary grey — no "Pre-AM / Within 30 min" subtitle. Each meal cell is `flex flex-col justify-between` with `min-height: 88px`. Food string sits at the top in 13px ink, line-height 1.45. Macros pinned to the bottom right, `font-mono` 11px, just two coloured numbers (`--macro-carbs` then `--macro-protein`) — no `C` / `P` letters, no `g` units, no chip backgrounds.
+  - **Totals row:** `Total` label in the leftmost column. Each day cell shows two coloured numbers (carbs then protein) in 13px font-medium mono, right-aligned. No `EASY/HARD/LONG` tag suffix (already in the header pill).
+  - **Borders:** horizontal hairlines (`0.5px --border-default`) between every row and below the header. Vertical hairlines on each day column's left edge (label column has no left border). Totals row has no bottom border.
+- **Rules footer:** below the grid with ~28px gap and a 0.5px top border. 3-column equal grid showing the three rules. Each rule: tiny mono uppercase tertiary `RULE 01` / `RULE 02` / `RULE 03` label, then the rule text in 12px secondary, line-height 1.5. No box, no background, no card around them.
+
+**Layout (mobile, <768px):**
+
+- Same top utility + header strip.
+- Day-by-day swipeable / tabbed view. One day at a time. 7 day-buttons across the top (`MON … SUN`), tapping selects. Below that, 5 stacked `MealCard`s for the selected day, then a `DayTotalRow`.
+- Each `MealCard`: slot label tiny mono tertiary, food line at 15px, coloured macro numbers right-aligned. Same hierarchy as desktop, just stacked.
+
+**Removed from visual rendering (data still in model):**
+
+- `PlannedMeal.note` — no longer surfaced in the cell. Reserved for a future tap/hover popover.
+- `PlannedMeal.isCritical` — left-accent border removed. Field preserved on the model.
+- The old "Carbs target / Protein target" headline block and the boxed Rule 01/02/03 cards above the grid are gone — both functions absorbed by the header legend and rules footer.
+
+**Inline editing (Phase 3+):** clicking any meal cell opens a popover (`shadcn Popover` pattern) with form fields for food / note / macros / isCritical. On mobile this becomes a bottom sheet. Saves directly to `FuellingPlan.meals` in Dexie, flips `manuallyEdited: true`.
+
+**Print route `/plan/[weekId]/print`:** ports the same minimal layout to A4 landscape via `@page` rules. White paper background, `.sheet`-scoped tokens override the dark shell. Triggers `window.print()` on mount if `?auto=1`.
 
 ### 4.4 Grocery list (`/grocery/[weekId]`)
 
-On-screen:
-- Header matches reference HTML
-- Two-column layout on desktop, single column on mobile
-- Each category section: black bar header, cream items list with checkboxes
-- Tapping a checkbox toggles `checked` in Dexie (so progress persists across devices once cloud is added)
-- "Reset all" button
-- Bottom: macro check table + notes box
-- Top actions: "Print", "Regenerate", "Toggle: include dinner items"
+Same minimal language as the plan view — single-column scannable list, no card chrome around items.
 
-**Print route `/grocery/[weekId]/print`:** exact replica of `weekly-grocery-list.html`.
+**Layout:**
+
+- **Top utility row:** "← Dashboard" back link left, actions right (Reset · Print · Regenerate (Phase 4) · Toggle "include dinner items" — Phase 4).
+- **Header strip:** `Groceries` title, `Week of [date]` mono tertiary, and a `X of Y` progress count. Below it a thin progress bar (`--accent` fill on `--surface-2` track).
+- **Category sections:** vertical list, single column on mobile, can become two columns on wide desktop. Each section header is mono uppercase tracking-widest, sticky on scroll (`--surface-2/95` backdrop blur in the in-app view).
+- **Items:** each row is checkbox left, item name in body text, quantity right-aligned in `font-mono` `--accent` (teal in app), optional note below in italic tertiary. Tapping the checkbox toggles `checked` in Dexie immediately. Checked rows fade to 40% opacity, name gets strikethrough.
+- **Macro check section** at the bottom: simple table — Day · Carbs · Protein. Carbs in `--macro-carbs`, protein in `--macro-protein`.
+- **Notes section** at the bottom: `Note 01` / `Note 02` mono labels + secondary text bullets.
+
+**Print route `/grocery/[weekId]/print`:** ports the same layout to A4 portrait via `@page` rules. White paper, two-column CSS columns for categories so the page packs efficiently, macro check section forced onto a new page via `page-break-before: always`. Filled black checkbox squares with a tick when `it.checked === true`. Triggers `window.print()` on mount if `?auto=1`.
 
 ### 4.5 Check-in (`/checkin/[weekId]`)
 
@@ -325,6 +356,36 @@ Plain forms with three tabs:
 
 Honors a `?tab=profile|food|training` query param so the dashboard's "Edit training" link deep-links straight to the right tab.
 
+### 4.7 Planning the next week
+
+When the dashboard's "Up next" CTA is "Plan next week" (i.e. the current week has been checked in), tapping it opens a sheet/modal offering three paths. Each lands the athlete on the next-week plan view ready to confirm or edit.
+
+**Three paths:**
+
+1. **Copy last week** — Duplicates the most recent `FuellingPlan` *and* `TrainingWeek` with new IDs and dates via `clonePlan(srcWeekId, destWeekId)` in `lib/db.ts`. No AI call. The athlete lands on the editable plan view with the cloned data and can edit any meal inline before confirming. Best when last week worked and the training is similar.
+
+2. **Adjust last week** — Clones last week as a base, then POSTs to `/api/plan` with `mode: "adjust"`, the cloned `baselinePlan`, the new `trainingWeek`, and any prior `aiFeedback.recommendations`. The AI only modifies meals on days whose training has changed or meals flagged by feedback; meals on unchanged days are returned verbatim from the baseline. Best when last week mostly worked but a few sessions or recommendations need accommodating.
+
+3. **Generate fresh** — Full AI generation from scratch (`mode: "fresh"`), factoring in profile, food preferences, training, and previous feedback if any. Best when training has changed substantially or last week's plan missed.
+
+**Modal UX:**
+
+- Three options stacked vertically as cards, each with title + one-line explanation. Disabled cards (e.g. "Adjust last week" before Phase 5) show a tooltip explaining why.
+- Default selection: **"Copy last week"** if a prior `FuellingPlan` exists in Dexie; otherwise **"Generate fresh"** (post-onboarding always falls here).
+- Confirm button at the bottom; cancel returns to the dashboard.
+
+**`clonePlan(srcWeekId, destWeekId)` in `lib/db.ts`:**
+
+- Reads the source `FuellingPlan` and `TrainingWeek` from their tables.
+- Writes new records with `id = destWeekId`, `weekId = destWeekId`, `weekStart = destWeekId`, `generatedAt = now`.
+- Sets `FuellingPlan.manuallyEdited = true` so downstream regenerate suggestions know this is athlete-curated, not AI-fresh.
+- No-op if no source records exist; caller falls back to "Generate fresh".
+
+**Failure modes:**
+
+- "Copy last week" with no prior plan → button disabled with explanatory tooltip; default selection flips to "Generate fresh".
+- "Adjust last week" before Phase 5 → disabled with "Coming in Phase 5" tooltip (plumbing exists in `/api/plan` but routes internally to fresh generation until check-in integration lands).
+
 ---
 
 ## 5. API routes
@@ -333,7 +394,10 @@ Three Route Handlers under `app/api/`. All use the OpenAI Node SDK and return JS
 
 ### 5.1 `POST /api/plan`
 
-**Body:** `{ profile, foodPreferences, trainingWeek }`
+**Body:** `{ mode, profile, foodPreferences, trainingWeek, previousFeedback?, baselinePlan? }` — where:
+- `mode: "fresh" | "adjust"` (required) — selects generation behaviour. See §4.7.
+- `baselinePlan: FuellingPlan` (required when `mode === "adjust"`) — last week's plan, used as the verbatim baseline the AI selectively modifies.
+- `previousFeedback?: string` — optional carry-forward of `aiFeedback.recommendations` from the previous check-in.
 
 **Server prompt:** see Appendix A. Returns a structured `FuellingPlan` (without id/weekId — client adds those).
 
@@ -417,11 +481,14 @@ That's the entire change. The client UI gets a "Settings → Use my own OpenAI k
   print-plan.ts                # CSS string injected via <style> in /plan/[weekId]/print
   print-grocery.ts             # CSS string injected via <style> in /grocery/[weekId]/print
                                # (.ts not .css — lets the AppBar conditional + clean
-                               # unmount on client-side nav work seamlessly)
+                               # unmount on client-side nav work seamlessly. Both files
+                               # use the minimal in-app language, not the editorial direction
+                               # in /reference/.)
 
 /reference
-  fueling-plan-print.html      # source of truth for the plan print sheet
-  weekly-grocery-list.html     # source of truth for the grocery print sheet
+  fueling-plan-print.html      # HISTORICAL — original editorial Fraunces direction.
+  weekly-grocery-list.html     # The live print routes have moved to the minimal in-app
+                               # language. These files are retained only as design history.
 ```
 
 ---
@@ -432,20 +499,22 @@ Do **not** try to build everything at once. Phases:
 
 ### Phase 1 — Skeleton (no AI yet)
 1. `create-next-app` with TS + Tailwind + App Router
-2. Add shadcn/ui, Fraunces + JetBrains Mono via `next/font`
+2. Hand-build the `components/ui/*` primitives; load Manrope / Inter / JetBrains Mono via `<link>` in `app/layout.tsx`
 3. Set up Dexie with the schema in §3
 4. Build onboarding (§4.1) — saves to Dexie, redirects to dashboard
 5. Build dashboard (§4.2) reading from Dexie
-6. Stub the plan/grocery/checkin pages with mock data
+6. Stub the plan/grocery/checkin pages with mock data (`lib/mock.ts`)
 
 ✅ **Milestone:** you can onboard, see a fake plan, click through everything.
 
-### Phase 2 — Print views (the visual win)
-7. Port `fueling-plan-print.html` to `/plan/[weekId]/print/page.tsx` — server-rendered, reads from Dexie via a client wrapper
-8. Port `weekly-grocery-list.html` to `/grocery/[weekId]/print/page.tsx`
-9. Hook up "Print" buttons → `window.print()`
+### Phase 2 — Print views
+7. Build `/plan/[weekId]/print/page.tsx` — client component reading from Dexie, CSS injected from `styles/print-plan.ts`, A4 landscape `@page`
+8. Build `/grocery/[weekId]/print/page.tsx` — same pattern, A4 portrait
+9. Hook up "Print" buttons → open the print route in a new tab with `?auto=1` to auto-fire `window.print()`
 
-✅ **Milestone:** beautiful printable plans from mock data.
+Both print sheets share the in-app minimal visual language (Manrope + JetBrains Mono, hairline borders, light-tinted session pills, amber/green inline macro numbers). The `/reference/*.html` editorial direction is now historical.
+
+✅ **Milestone:** printable plan + grocery sheets on white paper, matching the in-app language.
 
 ### Phase 3 — AI plan generation
 10. Add OpenAI SDK, `.env.local` with `OPENAI_API_KEY`
@@ -461,11 +530,25 @@ Do **not** try to build everything at once. Phases:
 
 ✅ **Milestone:** complete week-in-week-out flow without check-ins.
 
+### Phase 4.5 — Copy and edit flow
+
+Sits between grocery generation (Phase 4) and the check-in loop (Phase 5). Lets the athlete plan a follow-on week before the AI feedback loop exists.
+
+14.5a. Add `clonePlan(srcWeekId, destWeekId)` helper to `lib/db.ts` — duplicates `FuellingPlan` + `TrainingWeek` with new IDs/dates. No network call.
+14.5b. Build the three-option chooser sheet on the dashboard (§4.7).
+14.5c. Wire "Generate fresh" → existing `/api/plan` POST with `mode: "fresh"`.
+14.5d. Wire "Copy last week" → `clonePlan()` + redirect to `/plan/[nextWeekId]`.
+14.5e. Stub `mode: "adjust"` plumbing in `/api/plan/route.ts` — accept the flag + `baselinePlan` body field, but route internally to the same fresh-generation logic for now (the adjust-mode AI behaviour ships in Phase 5 alongside check-in integration).
+14.5f. Disable the "Adjust last week" card with a "Coming in Phase 5" tooltip.
+
+✅ **Milestone:** athlete can plan a follow-on week with one tap (copy + edit) or full AI (generate fresh). Adjust-mode is plumbed but not yet smart.
+
 ### Phase 5 — Check-in loop
 16. Build check-in form (§4.5)
 17. Build `/api/feedback` with prompt from Appendix C
 18. Build "Apply suggested edits" → patches PlannedMeals in Dexie
-19. Build "Generate next week with feedback" hand-off
+19. Light up the "Adjust last week" path from §4.7 — implement the real `mode: "adjust"` AI behaviour in `/api/plan` (preserve unchanged meals verbatim, modify only meals affected by training diff or `previousFeedback`)
+20. Pass `aiFeedback.recommendations` from the latest check-in into the chooser's "Adjust" / "Generate fresh" calls as `previousFeedback`
 
 ✅ **Milestone:** full feedback loop. Ship.
 
@@ -518,6 +601,18 @@ Principles you always apply:
 6. For female athletes with cycle-aware tracking enabled, mention a luteal-phase note (slightly higher carbs, supports sleep) for one dinner.
 7. **Read `trainingWeek.weekNotes` as the athlete's only free-text colour about the week** (focus, fatigue, taper, travel, race week). Per-session prose descriptions are no longer collected — infer each session's intent from its structured fields: `type` + `customType` for the activity, `label` for AM/PM, `distanceKm` / `durationMin` for volume. A `customType` like "Gym" or "Pilates" means non-running cross-training — fuel it as a moderate cross-train day unless `weekNotes` says otherwise.
 
+8. **Food string formatting.** Every `meals[i].food` string must follow these rules — they are non-negotiable for downstream rendering:
+   - Use commas as the only separator between ingredients. Correct: `"Oats, banana, yoghurt, honey"`. Never use `+`, `w/`, `&` (as a connector), `and`, or mixed connectors.
+   - For quantities of branded items, use `× N` with the multiplication sign and a leading space, never parentheses or `x` or `*`. Correct: `"Rokeby × 2"`, `"Up&Go × 2"`, `"Toast × 2"`. Wrong: `"1× Rokeby"`, `"Rokeby (2)"`, `"2 Rokeby"`, `"x2 toast"`.
+   - When the quantity is one, omit the multiplier entirely. Correct: `"Rokeby"`. Wrong: `"1× Rokeby"`, `"Rokeby × 1"`.
+   - Use `/` to indicate substitution choices, with no spaces around it. Correct: `"Rokeby/Up&Go"`, `"rice/pasta"`, `"eggs/chicken"`. Wrong: `"Rokeby or Up&Go"`, `"Rokeby and Up&Go"`, `"rice or pasta"`, `"Rokeby / Up&Go"`.
+   - Maximum 60 characters per food string. If a meal needs more detail, shorten the ingredient list rather than abbreviating words.
+   - `&` inside a brand name (`"Up&Go"`) is fine — the ban is only on `&` as an ingredient connector.
+
+9. **Mode-aware behaviour.** The user message includes a `mode` field of `"fresh"` or `"adjust"`.
+   - `"fresh"` (default): generate the full week from scratch using profile, food preferences, training week, and any previous feedback. This is the standard behaviour for onboarding and "Generate fresh" from the §4.7 chooser.
+   - `"adjust"`: a `baselinePlan` field is also provided — last week's plan verbatim. Treat the baseline as the starting point. Identify which days' training has changed between the baseline's implied training and the new `trainingWeek`, plus which meals are flagged by `previousFeedback`. Modify ONLY those meals. Meals on unchanged days with no feedback flag MUST be returned verbatim from the baseline — same `food` string, same `carbsG`, same `proteinG`, same `note`, same `isCritical`. This preserves the athlete's accumulated tuning while accommodating the specific changes that warrant a fuel shift.
+
 You output ONLY valid JSON matching this exact schema — no prose, no markdown, no code fences:
 
 {
@@ -548,6 +643,7 @@ isCritical = true for meals immediately before or after a hard/long session, or 
 
 ```json
 {
+  "mode": "fresh",
   "profile": { ...Profile },
   "foodPreferences": { ...FoodPreferences },
   "trainingWeek": {
@@ -565,11 +661,15 @@ isCritical = true for meals immediately before or after a hard/long session, or 
       // ... 6 more days
     ]
   },
-  "previousFeedback": "optional string carrying forward last week's AI recommendations"
+  "previousFeedback": "optional string carrying forward last week's AI recommendations",
+  "baselinePlan": { ...FuellingPlan }
 }
 ```
 
-Note: only `SubSession` fields are sent — the derived `DaySession.type`/`description`/`distanceKm`/`durationMin` are recomputed server-side if needed, but the prompt should drive off the raw sub-sessions plus `weekNotes`.
+- `mode` is required, one of `"fresh"` or `"adjust"`.
+- `baselinePlan` is **required when** `mode === "adjust"` and **omitted otherwise**. It is last week's `FuellingPlan` verbatim, used as the baseline the model selectively modifies under principle #9.
+- `previousFeedback` is optional in both modes — carries forward `aiFeedback.recommendations` from the previous check-in when one exists.
+- Only `SubSession` fields are sent in `trainingWeek.sessions[].sessions`; the derived `DaySession.type`/`description`/`distanceKm`/`durationMin` are recomputed server-side if needed, but the prompt should drive off the raw sub-sessions plus `weekNotes`.
 
 ## Appendix B — `/api/grocery` prompt
 

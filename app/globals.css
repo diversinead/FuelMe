@@ -44,6 +44,18 @@
   --session-rest: #6b7280;
   --session-custom: #f97316;   /* orange — non-preset / cross-training (Gym, Pilates, …) */
 
+  /* Macro accents — used in the plan grid (numbers only, no chip backgrounds) */
+  --macro-carbs: #FAC775;
+  --macro-protein: #5DCAA5;
+
+  /* Session pill (plan-grid day header) — dark-mode tinted backgrounds */
+  --session-pill-hard-bg: rgba(220, 38, 38, 0.15);
+  --session-pill-hard-fg: #fca5a5;
+  --session-pill-long-bg: rgba(37, 99, 235, 0.18);
+  --session-pill-long-fg: #93c5fd;
+  --session-pill-neutral-bg: var(--surface-3);
+  --session-pill-neutral-fg: var(--ink-secondary);
+
   /* Functional */
   --success: #10b981;
   --warning: #f59e0b;
@@ -82,6 +94,18 @@
   --session-long: #1d4ed8;
   --session-rest: #57534e;
   --session-custom: #ea580c;
+
+  /* Macro accents — used in the plan grid */
+  --macro-carbs: #BA7517;
+  --macro-protein: #0F6E56;
+
+  /* Session pill — light-mode tints (from spec) */
+  --session-pill-hard-bg: #FCEBEB;
+  --session-pill-hard-fg: #791F1F;
+  --session-pill-long-bg: #E6F1FB;
+  --session-pill-long-fg: #0C447C;
+  --session-pill-neutral-bg: var(--surface-3);
+  --session-pill-neutral-fg: var(--ink-secondary);
 
   --border-subtle: rgba(0, 0, 0, 0.03);
   --border-default: rgba(0, 0, 0, 0.06);
@@ -171,26 +195,21 @@ html[data-theme="dark"] body::before {
 .session-tag.rest { color: var(--session-rest); background: color-mix(in srgb, var(--session-rest) 15%, transparent); border-color: color-mix(in srgb, var(--session-rest) 30%, transparent); }
 .session-tag.custom { color: var(--session-custom); background: color-mix(in srgb, var(--session-custom) 15%, transparent); border-color: color-mix(in srgb, var(--session-custom) 30%, transparent); }
 
-/* Macro pills */
+/* Macro pills — inline data labels, no chip background. */
 .macro-pill {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: 3px;
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 4px;
   letter-spacing: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
 }
-.macro-pill.carbs {
-  color: var(--session-long);
-  background: color-mix(in srgb, var(--session-long) 12%, transparent);
-}
-.macro-pill.protein {
-  color: var(--accent);
-  background: var(--accent-muted);
-}
+.macro-pill.carbs   { color: var(--macro-carbs); }
+.macro-pill.protein { color: var(--macro-protein); }
 
 /* Section header (kept compatible for any usage in dark UI) */
 .section-header {

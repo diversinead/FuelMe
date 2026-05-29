@@ -7,54 +7,69 @@ import type {
   PlannedMeal,
 } from "./db";
 
+// PlannedMeal.food formatting rules — also applies to AI output in Phase 3
+// (to be lifted into SPEC.md Appendix A when the prompt is wired up):
+//
+//   1. Commas only between ingredients. No "+", "w/", "&", "and", or mixed
+//      connectors.                                  e.g. "Oats, banana, yoghurt"
+//   2. Branded-item quantities use "× N" with the multiplication sign and
+//      a leading space. Never parens, "x" or "*".   e.g. "Toast × 2", "Up&Go × 2"
+//   3. Quantity of 1 → omit the multiplier.         e.g. "Rokeby" (not "Rokeby × 1")
+//   4. "/" for substitution choices, no spaces.     e.g. "rice/pasta", "Rokeby/Up&Go"
+//   5. Max 60 chars per food string. Shorten the ingredient list rather than
+//      abbreviating words.
+//
+// "&" inside brand names is fine ("Up&Go") — the ban is only on "&" as an
+// ingredient connector.
+
 const DAYS: Day[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const SLOTS: MealSlot[] = ["breakfast", "post_am", "lunch", "afternoon", "dinner"];
 
 const SAMPLE: Record<MealSlot, Record<Day, Omit<PlannedMeal, "day" | "slot">>> = {
   breakfast: {
-    Mon: { food: "Oats + banana + yoghurt + honey", note: "Normal portion", carbsG: 50, proteinG: 22 },
-    Tue: { food: "Toast (2 slices) + honey + banana", note: "Pre-interval fuel", carbsG: 60, proteinG: 7, isCritical: true },
-    Wed: { food: "Oats + banana + maple + yoghurt", note: "Pre-long-run fuel", carbsG: 75, proteinG: 22, isCritical: true },
-    Thu: { food: "Banana + toast + honey", note: "Pre-threshold fuel", carbsG: 55, proteinG: 5, isCritical: true },
-    Fri: { food: "Oats + fruit + yoghurt", note: "Don't drop carbs", carbsG: 50, proteinG: 21 },
-    Sat: { food: "Oats + fruit + yoghurt + nut butter", note: "Pre-load a touch for Sun", carbsG: 55, proteinG: 25 },
-    Sun: { food: "Oats + banana + maple + yoghurt", note: "Pre-long-run fuel", carbsG: 75, proteinG: 22, isCritical: true },
+    Mon: { food: "Oats, banana, yoghurt, honey", note: "Normal portion", carbsG: 50, proteinG: 22 },
+    Tue: { food: "Toast × 2, honey, banana", note: "Pre-interval fuel", carbsG: 60, proteinG: 7, isCritical: true },
+    Wed: { food: "Oats, banana, maple, yoghurt", note: "Pre-long-run fuel", carbsG: 75, proteinG: 22, isCritical: true },
+    Thu: { food: "Banana, toast, honey", note: "Pre-threshold fuel", carbsG: 55, proteinG: 5, isCritical: true },
+    Fri: { food: "Oats, fruit, yoghurt", note: "Don't drop carbs", carbsG: 50, proteinG: 21 },
+    Sat: { food: "Oats, fruit, yoghurt, nut butter", note: "Pre-load a touch for Sun", carbsG: 55, proteinG: 25 },
+    Sun: { food: "Oats, banana, maple, yoghurt", note: "Pre-long-run fuel", carbsG: 75, proteinG: 22, isCritical: true },
   },
   post_am: {
-    Mon: { food: "1 × Rokeby or 1 × Up&Go", carbsG: 25, proteinG: 10 },
-    Tue: { food: "1 × Rokeby or 2 × Up&Go", note: "Between-session refuel", carbsG: 50, proteinG: 20, isCritical: true },
-    Wed: { food: "1 × Rokeby or 2 × Up&Go", note: "Long run depleted you", carbsG: 50, proteinG: 20, isCritical: true },
-    Thu: { food: "1 × Rokeby or 2 × Up&Go", note: "Between-session refuel", carbsG: 50, proteinG: 20, isCritical: true },
-    Fri: { food: "1 × Rokeby or 1 × Up&Go", carbsG: 25, proteinG: 10 },
-    Sat: { food: "1 × Rokeby or 1–2 × Up&Go", note: "Building toward Sun", carbsG: 35, proteinG: 15 },
-    Sun: { food: "1 × Rokeby or 2 × Up&Go", note: "Long run depleted you", carbsG: 50, proteinG: 20, isCritical: true },
+    Mon: { food: "Rokeby/Up&Go", carbsG: 25, proteinG: 10 },
+    Tue: { food: "Rokeby/Up&Go × 2", note: "Between-session refuel", carbsG: 50, proteinG: 20, isCritical: true },
+    Wed: { food: "Rokeby/Up&Go × 2", note: "Long run depleted you", carbsG: 50, proteinG: 20, isCritical: true },
+    Thu: { food: "Rokeby/Up&Go × 2", note: "Between-session refuel", carbsG: 50, proteinG: 20, isCritical: true },
+    Fri: { food: "Rokeby/Up&Go", carbsG: 25, proteinG: 10 },
+    Sat: { food: "Rokeby/Up&Go × 1–2", note: "Building toward Sun", carbsG: 35, proteinG: 15 },
+    Sun: { food: "Rokeby/Up&Go × 2", note: "Long run depleted you", carbsG: 50, proteinG: 20, isCritical: true },
   },
   lunch: {
-    Mon: { food: "Smoothie + toast w/ nut butter or boiled eggs", carbsG: 60, proteinG: 35 },
-    Tue: { food: "Smoothie + wrap or rice cakes w/ avocado/eggs", note: "Keep carbs flowing", carbsG: 70, proteinG: 40 },
-    Wed: { food: "Smoothie + rice bowl or pasta on the side", note: "Refuel + set up Thu", carbsG: 80, proteinG: 30 },
-    Thu: { food: "Smoothie + rice + eggs/chicken", note: "Eat 2 hrs before PM run", carbsG: 75, proteinG: 60, isCritical: true },
-    Fri: { food: "Smoothie + sandwich/wrap or boiled eggs", note: "Supports PM run", carbsG: 60, proteinG: 40 },
-    Sat: { food: "Smoothie + wrap or rice bowl", note: "Pre-loading Sun", carbsG: 70, proteinG: 30 },
-    Sun: { food: "Smoothie + pasta or rice bowl w/ protein", note: "Full refuel meal", carbsG: 80, proteinG: 65 },
+    Mon: { food: "Smoothie, toast, nut butter/eggs", carbsG: 60, proteinG: 35 },
+    Tue: { food: "Smoothie, wrap/rice cakes, avocado/eggs", note: "Keep carbs flowing", carbsG: 70, proteinG: 40 },
+    Wed: { food: "Smoothie, rice bowl/pasta", note: "Refuel + set up Thu", carbsG: 80, proteinG: 30 },
+    Thu: { food: "Smoothie, rice, eggs/chicken", note: "Eat 2 hrs before PM run", carbsG: 75, proteinG: 60, isCritical: true },
+    Fri: { food: "Smoothie, sandwich/wrap/eggs", note: "Supports PM run", carbsG: 60, proteinG: 40 },
+    Sat: { food: "Smoothie, wrap/rice bowl", note: "Pre-loading Sun", carbsG: 70, proteinG: 30 },
+    Sun: { food: "Smoothie, pasta/rice bowl, protein", note: "Full refuel meal", carbsG: 80, proteinG: 65 },
   },
   afternoon: {
-    Mon: { food: "Fruit + nuts, or toast + honey", note: "PM run top-up", carbsG: 25, proteinG: 5 },
-    Tue: { food: "Banana + rice cakes w/ honey", note: "Top up before PM run", carbsG: 30, proteinG: 3 },
-    Wed: { food: "Toast + nut butter + fruit", note: "Still eat — depleted", carbsG: 35, proteinG: 5 },
-    Thu: { food: "Banana + rice cakes + honey", note: "Top up before PM", carbsG: 30, proteinG: 3 },
-    Fri: { food: "Fruit + yoghurt or toast + honey", note: "Top up before PM run", carbsG: 25, proteinG: 5 },
-    Sat: { food: "Fruit + crackers / rice cakes", note: "Stable, don't go light", carbsG: 30, proteinG: 3 },
-    Sun: { food: "Toast + nut butter or fruit + yoghurt", note: "Still refuel", carbsG: 30, proteinG: 7 },
+    Mon: { food: "Fruit/toast, nuts/honey", note: "PM run top-up", carbsG: 25, proteinG: 5 },
+    Tue: { food: "Banana, rice cakes, honey", note: "Top up before PM run", carbsG: 30, proteinG: 3 },
+    Wed: { food: "Toast, nut butter, fruit", note: "Still eat — depleted", carbsG: 35, proteinG: 5 },
+    Thu: { food: "Banana, rice cakes, honey", note: "Top up before PM", carbsG: 30, proteinG: 3 },
+    Fri: { food: "Fruit/toast, yoghurt/honey", note: "Top up before PM run", carbsG: 25, proteinG: 5 },
+    Sat: { food: "Fruit, crackers/rice cakes", note: "Stable, don't go light", carbsG: 30, proteinG: 3 },
+    Sun: { food: "Toast/fruit, nut butter/yoghurt", note: "Still refuel", carbsG: 30, proteinG: 7 },
   },
   dinner: {
-    Mon: { food: "Protein + rice/potatoes + veg", note: "Set up Tue intervals", carbsG: 70, proteinG: 35 },
-    Tue: { food: "Protein + pasta/rice + veg", note: "Don't go light — two runs", carbsG: 75, proteinG: 35 },
-    Wed: { food: "Protein + carbs + veg + fruit/dessert", note: "Fuels Thursday double", carbsG: 85, proteinG: 40, isCritical: true },
-    Thu: { food: "Protein + carbs + veg", note: "Recover from threshold", carbsG: 75, proteinG: 35 },
-    Fri: { food: "Protein + carbs + veg + good fats", note: "Supports sleep", carbsG: 65, proteinG: 35 },
-    Sat: { food: "Rice/pasta + protein + veg", note: "Pre-load Sun long run", carbsG: 80, proteinG: 35, isCritical: true },
-    Sun: { food: "Protein + carbs + veg + dessert", note: "Refuel + set up week", carbsG: 85, proteinG: 40 },
+    Mon: { food: "Protein, rice/potatoes, veg", note: "Set up Tue intervals", carbsG: 70, proteinG: 35 },
+    Tue: { food: "Protein, pasta/rice, veg", note: "Don't go light — two runs", carbsG: 75, proteinG: 35 },
+    Wed: { food: "Protein, carbs, veg, fruit/dessert", note: "Fuels Thursday double", carbsG: 85, proteinG: 40, isCritical: true },
+    Thu: { food: "Protein, carbs, veg", note: "Recover from threshold", carbsG: 75, proteinG: 35 },
+    Fri: { food: "Protein, carbs, veg, good fats", note: "Supports sleep", carbsG: 65, proteinG: 35 },
+    Sat: { food: "Rice/pasta, protein, veg", note: "Pre-load Sun long run", carbsG: 80, proteinG: 35, isCritical: true },
+    Sun: { food: "Protein, carbs, veg, dessert", note: "Refuel + set up week", carbsG: 85, proteinG: 40 },
   },
 };
 
