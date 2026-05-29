@@ -1,5 +1,48 @@
 import type { DaySession, FoodPreferences, SessionType, SubSession } from "./db";
 
+// ---------------------------------------------------------------------------
+// Carb + protein periodisation targets (NUTRITION_RULES.md §2 + §3)
+//
+// These are the g/kg ranges the AI uses by default. They're surfaced in the
+// Regenerate dialog so the athlete can override them one-off before each
+// generation. Editing here is the canonical way to change defaults — keep
+// in sync with NUTRITION_RULES.md whenever the table moves.
+// ---------------------------------------------------------------------------
+
+export type CarbBand = "easy" | "hard";
+
+export const CARB_BANDS: CarbBand[] = ["easy", "hard"];
+
+export type Range = [number, number];
+
+export type CarbTargetsGperKg = Record<CarbBand, Range>;
+
+export const DEFAULT_CARB_TARGETS_G_PER_KG: CarbTargetsGperKg = {
+  easy: [5, 7],   // covers rest, easy, moderate, easy doubles, cross-training
+  hard: [8, 10],  // covers tempo, intervals, threshold, long, race
+};
+
+export const DEFAULT_PROTEIN_TARGET_G_PER_KG: Range = [1.6, 1.8];
+
+export const CARB_BAND_LABEL: Record<CarbBand, string> = {
+  easy: "Easy",
+  hard: "Hard",
+};
+
+// Maps a SessionType to its carb band. The day's band is the band of its
+// HARDEST session — so a double with AM easy + PM intervals classifies as Hard.
+export const SESSION_TYPE_BAND: Record<SessionType, CarbBand> = {
+  rest:         "easy",
+  easy:         "easy",
+  easy_double:  "easy",
+  cross:        "easy",
+  tempo:        "hard",
+  threshold:    "hard",
+  intervals:    "hard",
+  long:         "hard",
+  race:         "hard",
+};
+
 export const FOOD_SUGGESTIONS = {
   breakfastOptions: ["rolled oats", "toast", "Greek yoghurt", "banana", "muesli"],
   proteinSources: ["eggs", "chicken breast", "Greek yoghurt", "tofu", "tuna"],

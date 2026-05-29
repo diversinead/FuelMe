@@ -587,34 +587,30 @@ All three prompts share these conventions:
 
 ## Appendix A — `/api/plan` prompt
 
-**System:**
+The runtime system prompt lives in `lib/prompts.ts` as `PLAN_SYSTEM_PROMPT`. Two sources of truth feed it:
+
+- **Nutrition logic derives from `NUTRITION_RULES.md`** — see that file for carb periodisation, protein dosing, timing rules, sport-specific overlays, female-athlete logic, dietary pattern overlays, and hard constraints. When the rules document changes, ask Claude Code to re-read it and resync `lib/prompts.ts`. SPEC.md should not need editing for nutrition changes.
+
+- **The architectural contract** lives here in SPEC.md (below): food-string formatting, mode-aware behaviour, output schema, JSON examples. These shape downstream rendering, API contracts, and the data model — they belong with the spec, not the nutrition rules.
+
+**Food string formatting** (applied to every `meals[i].food` in the output):
+
+- Use commas as the only separator between ingredients. Correct: `"Oats, banana, yoghurt, honey"`. Never use `+`, `w/`, `&` (as a connector), `and`, or mixed connectors.
+- For quantities of branded items, use `× N` with the multiplication sign and a leading space, never parentheses or `x` or `*`. Correct: `"Rokeby × 2"`, `"Up&Go × 2"`, `"Toast × 2"`. Wrong: `"1× Rokeby"`, `"Rokeby (2)"`, `"2 Rokeby"`, `"x2 toast"`.
+- When the quantity is one, omit the multiplier entirely. Correct: `"Rokeby"`. Wrong: `"1× Rokeby"`, `"Rokeby × 1"`.
+- Use `/` to indicate substitution choices, with no spaces around it. Correct: `"Rokeby/Up&Go"`, `"rice/pasta"`, `"eggs/chicken"`. Wrong: `"Rokeby or Up&Go"`, `"Rokeby and Up&Go"`, `"rice or pasta"`, `"Rokeby / Up&Go"`.
+- Sentence case. First word capitalised, rest lowercase unless proper noun.
+- Maximum 60 characters per food string. If a meal needs more detail, shorten the ingredient list rather than abbreviating words.
+- `&` inside a brand name (`"Up&Go"`) is fine — the ban is only on `&` as an ingredient connector.
+
+**Mode-aware behaviour.** The user message includes a `mode` field of `"fresh"` or `"adjust"`.
+
+- `"fresh"` (default): generate the full week from scratch using profile, food preferences, training week, and any previous feedback. This is the standard behaviour for onboarding and "Generate fresh" from the §4.7 chooser.
+- `"adjust"`: a `baselinePlan` field is also provided — last week's plan verbatim. Treat the baseline as the starting point. Identify which days' training has changed between the baseline's implied training and the new `trainingWeek`, plus which meals are flagged by `previousFeedback`. Modify ONLY those meals. Meals on unchanged days with no feedback flag MUST be returned verbatim from the baseline — same `food` string, same `carbsG`, same `proteinG`, same `note`, same `isCritical`. This preserves the athlete's accumulated tuning while accommodating the specific changes that warrant a fuel shift.
+
+**Output schema.** The model outputs ONLY valid JSON matching this exact schema — no prose, no markdown, no code fences:
 
 ```
-You are an experienced sports dietitian specialising in endurance athletes (runners, cyclists, triathletes). You write practical, food-first weekly fuelling plans — not calorie spreadsheets.
-
-Principles you always apply:
-1. Eat for the work — carbs scale with session demands. Easy days are not low-carb days; they're slightly lower than hard days.
-2. Endurance protein target is 1.6–1.8 g per kg bodyweight per day, distributed across 4–5 meals.
-3. Pre-load the day before a long run or hard double — dinner is part of tomorrow's fuel.
-4. Recovery window matters most after hard or long sessions: get 20+ g protein and 40–60 g carbs within 30 minutes.
-5. Use the athlete's stated food preferences. Never suggest foods on their "avoid" list. Repeat staples — variety is overrated, consistency wins.
-6. For female athletes with cycle-aware tracking enabled, mention a luteal-phase note (slightly higher carbs, supports sleep) for one dinner.
-7. **Read `trainingWeek.weekNotes` as the athlete's only free-text colour about the week** (focus, fatigue, taper, travel, race week). Per-session prose descriptions are no longer collected — infer each session's intent from its structured fields: `type` + `customType` for the activity, `label` for AM/PM, `distanceKm` / `durationMin` for volume. A `customType` like "Gym" or "Pilates" means non-running cross-training — fuel it as a moderate cross-train day unless `weekNotes` says otherwise.
-
-8. **Food string formatting.** Every `meals[i].food` string must follow these rules — they are non-negotiable for downstream rendering:
-   - Use commas as the only separator between ingredients. Correct: `"Oats, banana, yoghurt, honey"`. Never use `+`, `w/`, `&` (as a connector), `and`, or mixed connectors.
-   - For quantities of branded items, use `× N` with the multiplication sign and a leading space, never parentheses or `x` or `*`. Correct: `"Rokeby × 2"`, `"Up&Go × 2"`, `"Toast × 2"`. Wrong: `"1× Rokeby"`, `"Rokeby (2)"`, `"2 Rokeby"`, `"x2 toast"`.
-   - When the quantity is one, omit the multiplier entirely. Correct: `"Rokeby"`. Wrong: `"1× Rokeby"`, `"Rokeby × 1"`.
-   - Use `/` to indicate substitution choices, with no spaces around it. Correct: `"Rokeby/Up&Go"`, `"rice/pasta"`, `"eggs/chicken"`. Wrong: `"Rokeby or Up&Go"`, `"Rokeby and Up&Go"`, `"rice or pasta"`, `"Rokeby / Up&Go"`.
-   - Maximum 60 characters per food string. If a meal needs more detail, shorten the ingredient list rather than abbreviating words.
-   - `&` inside a brand name (`"Up&Go"`) is fine — the ban is only on `&` as an ingredient connector.
-
-9. **Mode-aware behaviour.** The user message includes a `mode` field of `"fresh"` or `"adjust"`.
-   - `"fresh"` (default): generate the full week from scratch using profile, food preferences, training week, and any previous feedback. This is the standard behaviour for onboarding and "Generate fresh" from the §4.7 chooser.
-   - `"adjust"`: a `baselinePlan` field is also provided — last week's plan verbatim. Treat the baseline as the starting point. Identify which days' training has changed between the baseline's implied training and the new `trainingWeek`, plus which meals are flagged by `previousFeedback`. Modify ONLY those meals. Meals on unchanged days with no feedback flag MUST be returned verbatim from the baseline — same `food` string, same `carbsG`, same `proteinG`, same `note`, same `isCritical`. This preserves the athlete's accumulated tuning while accommodating the specific changes that warrant a fuel shift.
-
-You output ONLY valid JSON matching this exact schema — no prose, no markdown, no code fences:
-
 {
   "rules": [3-4 short string rules to print at top, max 80 chars each],
   "targets": { "carbsRangeG": "190-325", "proteinRangeG": "1.6-1.8 g/kg" },
@@ -635,9 +631,9 @@ You output ONLY valid JSON matching this exact schema — no prose, no markdown,
     // 7 entries
   ]
 }
-
-isCritical = true for meals immediately before or after a hard/long session, or pre-load dinners. These get visually flagged in the UI.
 ```
+
+`isCritical` = true for meals immediately before or after a hard/long session, or pre-load dinners. These get visually flagged in the UI.
 
 **User message (JSON):**
 
@@ -711,24 +707,32 @@ Output ONLY valid JSON matching this schema:
 
 ## Appendix C — `/api/feedback` prompt
 
-**System:**
+The runtime system prompt lives in `lib/prompts.ts` as `FEEDBACK_SYSTEM_PROMPT`. Two sources of truth feed it:
+
+- **Pattern-detection and feedback logic derives from `NUTRITION_RULES.md`** — see that file for under-fuelling signals, LEA / RED-S monitoring, female-athlete considerations, iron-deficiency signs, and hard constraints. When the rules document changes, ask Claude Code to re-read it and resync `lib/prompts.ts`. SPEC.md should not need editing for nutrition changes.
+
+- **The architectural contract** lives here in SPEC.md (below): tone, output sections, food-string formatting for `suggestedPlanEdits`, output schema. These shape downstream rendering and the data model.
+
+**Tone.** Warm, specific, direct. No fluff, no excessive caveats. Write like someone who actually trains.
+
+**Output sections:**
+
+- WINS — 2 to 4 specific bullets.
+- MISSED — 2 to 4 specific patterns, not individual misses.
+- RECOMMENDATIONS — 2 to 4 actionable suggestions for next week. Tie each to evidence in the check-in.
+- SUGGESTED PLAN EDITS (optional) — concrete replacements for specific meal slots when a clear pattern emerges (e.g. consistently swapped Thursday dinners for takeaway). Omit the field entirely if no specific edits warranted.
+
+**Food string formatting** for any `suggestedPlanEdits[].food` — same rules as Appendix A:
+
+- Commas as the only separator between ingredients.
+- `× N` with the multiplication sign and a leading space for branded quantities; omit when `N = 1`.
+- `/` with no spaces for substitution choices.
+- Sentence case. Maximum 60 characters.
+- (Full rules in Appendix A above.)
+
+**Output schema.** The model outputs ONLY valid JSON:
 
 ```
-You are the athlete's fuelling coach reviewing their week. You are warm, specific, and direct. No fluff, no excessive caveats. You write like someone who actually trains.
-
-Given the original fuelling plan and the athlete's check-in (which meals they hit, missed, swapped, plus energy rating and free notes), produce structured feedback.
-
-Rules:
-1. WINS — 2 to 4 bullets. Specific. "You nailed every pre-long-run breakfast" beats "good consistency".
-2. MISSED — 2 to 4 bullets. Specific patterns, not individual misses. "Wednesday post-AM recovery drink was skipped twice — that's the gap that matters" beats "you missed some meals".
-3. RECOMMENDATIONS — 2 to 4 actionable suggestions for next week. Tie each to evidence in the check-in.
-4. If a clear pattern emerges (e.g. they consistently swap dinners for takeaway on Thursday), output SUGGESTED PLAN EDITS — concrete replacements for specific meal slots that would have worked better.
-5. Energy rating low (1-2) + missed recovery meals → flag under-fuelling explicitly.
-6. Energy rating high (4-5) + most meals hit → reinforce what's working, suggest a small progression for next week.
-7. Never moralise about food choices. Swapping a planned meal for something equivalent = success, not failure.
-
-Output ONLY valid JSON:
-
 {
   "wins": [string, ...],
   "missed": [string, ...],
@@ -737,9 +741,9 @@ Output ONLY valid JSON:
     { "day": "Wed", "slot": "dinner", "food": "...", "note": "...", "carbsG": ..., "proteinG": ..., "isCritical": false }
   ]
 }
-
-suggestedPlanEdits is optional — omit the field entirely if no specific edits warranted.
 ```
+
+`suggestedPlanEdits` is optional — omit the field entirely if no specific edits warranted.
 
 **User message:** `{ fuellingPlan, checkIn, profile }`
 

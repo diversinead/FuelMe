@@ -8,10 +8,13 @@ import { format, parseISO } from "date-fns";
 import {
   getDb,
   type Day,
-  type DayTag,
+  type DaySession,
   type FuellingPlan,
   type MealSlot,
+  type SessionType,
+  type TrainingWeek,
 } from "@/lib/db";
+import { SESSION_LABELS } from "@/lib/defaults";
 import { planPrintCss } from "@/styles/print-plan";
 
 const DAYS: Day[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -25,21 +28,26 @@ const SLOTS: { slot: MealSlot; label: string }[] = [
 
 type PillVariant = "neutral" | "hard" | "long";
 
-function pillVariantFor(tag: DayTag | undefined): PillVariant {
-  if (tag === "hard") return "hard";
-  if (tag === "long") return "long";
-  return "neutral";
+function pillVariantForType(type: SessionType | undefined): PillVariant {
+  if (
+    type === "intervals" ||
+    type === "threshold" ||
+    type === "tempo" ||
+    type === "race"
+  ) {
+    return "hard";
+  }
+  if (type === "long") return "long";
+  return "neutral"; // rest, easy, easy_double, cross
 }
 
-function pillLabelFor(tag: DayTag | undefined): string {
-  switch (tag) {
-    case "easy":  return "Easy";
-    case "easy+": return "Easy+";
-    case "hard":  return "Hard";
-    case "long":  return "Long";
-    case "rest":  return "Rest";
-    default:      return "Rest";
+function pillLabelForDay(daySession: DaySession | undefined): string {
+  if (!daySession) return "Rest";
+  const subs = daySession.sessions ?? [];
+  if (subs.length === 1 && subs[0].customType?.trim()) {
+    return subs[0].customType.trim();
   }
+  return SESSION_LABELS[daySession.type] ?? "Rest";
 }
 
 export default function PlanPrintPage({
@@ -51,10 +59,15 @@ export default function PlanPrintPage({
   const searchParams = useSearchParams();
   const auto = searchParams?.get("auto") === "1";
 
-  const plan = useLiveQuery(
-    async () => (await getDb().fuellingPlans.get(weekId)) ?? null,
-    [weekId],
-  );
+  const data = useLiveQuery(async () => {
+    const db = getDb();
+    return {
+      plan: (await db.fuellingPlans.get(weekId)) ?? null,
+      training: (await db.trainingWeeks.get(weekId)) ?? null,
+    };
+  }, [weekId]);
+  const plan = data?.plan;
+  const training = data?.training ?? null;
 
   React.useEffect(() => {
     if (!auto || !plan) return;
@@ -84,12 +97,21 @@ export default function PlanPrintPage({
     );
   }
 
-  return <PlanSheet plan={plan} />;
+  return <PlanSheet plan={plan} training={training} />;
 }
 
-function PlanSheet({ plan }: { plan: FuellingPlan }) {
+function PlanSheet({
+  plan,
+  training,
+}: {
+  plan: FuellingPlan;
+  training: TrainingWeek | null;
+}) {
   const mealMap = new Map(
     plan.meals.map((m) => [`${m.day}:${m.slot}`, m] as const),
+  );
+  const trainingByDay = new Map(
+    (training?.sessions ?? []).map((s) => [s.day, s] as const),
   );
   const weekDate = format(parseISO(plan.weekId), "EEE d MMM");
 
@@ -126,12 +148,14 @@ function PlanSheet({ plan }: { plan: FuellingPlan }) {
 
           {/* day headers */}
           {DAYS.map((d) => {
-            const total = plan.dayTotals.find((t) => t.day === d);
+            const session = trainingByDay.get(d);
             return (
               <div key={d} className="day-cell">
                 <div className="day">{d.toUpperCase()}</div>
-                <span className={`session-pill ${pillVariantFor(total?.tag)}`}>
-                  {pillLabelFor(total?.tag)}
+                <span
+                  className={`session-pill ${pillVariantForType(session?.type)}`}
+                >
+                  {pillLabelForDay(session)}
                 </span>
               </div>
             );

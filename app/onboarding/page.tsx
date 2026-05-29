@@ -10,6 +10,7 @@ import { TrainingStep } from "@/components/onboarding/TrainingStep";
 import {
   getDb,
   type FoodPreferences,
+  type FuellingPlan,
   type Profile,
   type TrainingWeek,
 } from "@/lib/db";
@@ -51,6 +52,7 @@ export default function OnboardingPage() {
   const [step, setStep] = React.useState(0);
   const [direction, setDirection] = React.useState<1 | -1>(1);
   const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
   const [profile, setProfile] = React.useState<Profile>(initialProfile);
   const [foodPrefs, setFoodPrefs] =
@@ -82,12 +84,52 @@ export default function OnboardingPage() {
 
   async function submit() {
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const db = getDb();
+      // Persist the inputs first so they survive a failed plan generation.
       await db.profile.put(profile);
       await db.foodPreferences.put(foodPrefs);
       await db.trainingWeeks.put(trainingWeek);
-      router.push("/dashboard");
+
+      // Generate the first fuelling plan via /api/plan.
+      const response = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "fresh",
+          profile,
+          foodPreferences: foodPrefs,
+          trainingWeek,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          (errBody as { error?: string }).error ??
+            `Plan generation failed (HTTP ${response.status}).`,
+        );
+      }
+
+      const apiPlan = (await response.json()) as Omit<
+        FuellingPlan,
+        "id" | "weekId" | "generatedAt"
+      >;
+
+      const plan: FuellingPlan = {
+        ...apiPlan,
+        id: trainingWeek.id,
+        weekId: trainingWeek.id,
+        generatedAt: new Date().toISOString(),
+      };
+      await db.fuellingPlans.put(plan);
+
+      router.push(`/plan/${trainingWeek.id}`);
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Plan generation failed.";
+      setSubmitError(message);
     } finally {
       setSubmitting(false);
     }
@@ -144,23 +186,50 @@ export default function OnboardingPage() {
           </motion.div>
         </AnimatePresence>
 
-        <div className="flex items-center justify-between gap-3 sticky bottom-0 bg-surface-0 pt-4 pb-2 border-t border-border-subtle">
-          <Button
-            variant="ghost"
-            onClick={back}
-            disabled={step === 0 || submitting}
-          >
-            Back
-          </Button>
-          {step < 2 ? (
-            <Button onClick={next} disabled={!canAdvance} fullWidth size="lg" className="max-w-[280px]">
-              Continue
-            </Button>
-          ) : (
-            <Button onClick={submit} disabled={submitting} fullWidth size="lg" className="max-w-[280px]">
-              {submitting ? "Saving…" : "Save & finish"}
-            </Button>
+        <div className="sticky bottom-0 bg-surface-0 pt-4 pb-2 border-t border-border-subtle">
+          {submitError && step === 2 && (
+            <div
+              className="mb-3 p-3 rounded-button"
+              style={{
+                border: "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+                background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+              }}
+            >
+              <p className="text-body-sm text-danger leading-snug">
+                {submitError}
+              </p>
+              <p className="text-body-sm text-ink-tertiary mt-1 leading-snug">
+                Your profile, food prefs, and training are saved. Retry or skip
+                — you can regenerate the plan from the plan view later.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" variant="secondary" onClick={() => router.push("/dashboard")}>
+                  Skip to dashboard
+                </Button>
+                <Button size="sm" onClick={submit} disabled={submitting}>
+                  {submitting ? "Retrying…" : "Retry"}
+                </Button>
+              </div>
+            </div>
           )}
+          <div className="flex items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              onClick={back}
+              disabled={step === 0 || submitting}
+            >
+              Back
+            </Button>
+            {step < 2 ? (
+              <Button onClick={next} disabled={!canAdvance} fullWidth size="lg" className="max-w-[280px]">
+                Continue
+              </Button>
+            ) : (
+              <Button onClick={submit} disabled={submitting} fullWidth size="lg" className="max-w-[280px]">
+                {submitting ? "Generating plan…" : "Save & finish"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </main>
