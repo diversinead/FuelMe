@@ -37,11 +37,23 @@ const STATUS_LABEL: Record<CompletionStatus, string> = {
   missed: "Missed",
   swapped: "Swapped",
 };
-const STATUS_COLOR: Record<CompletionStatus, string> = {
-  done: "bg-session-easy/20 text-session-easy border-session-easy/40",
-  partial: "bg-warning/15 text-warning border-warning/30",
-  missed: "bg-session-hard/15 text-session-hard border-session-hard/40",
-  swapped: "bg-session-long/15 text-session-long border-session-long/40",
+
+// Tailwind's `/opacity` modifier doesn't compute against hex-string CSS
+// variables (silently drops the colour), so we generate tints via
+// color-mix() inline. Keeps the visual feedback consistent across statuses.
+const STATUS_VAR: Record<CompletionStatus, string> = {
+  done: "var(--session-easy)",
+  partial: "var(--warning)",
+  missed: "var(--session-hard)",
+  swapped: "var(--session-long)",
+};
+const statusStyle = (s: CompletionStatus): React.CSSProperties => {
+  const v = STATUS_VAR[s];
+  return {
+    background: `color-mix(in srgb, ${v} 18%, transparent)`,
+    color: v,
+    borderColor: `color-mix(in srgb, ${v} 45%, transparent)`,
+  };
 };
 
 export default function CheckInPage({
@@ -126,9 +138,44 @@ export default function CheckInPage({
 
       {/* Meal completion grid */}
       <section className="mb-10">
-        <h2 className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary mb-3">
-          Meal completion
-        </h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <h2 className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+            Meal completion
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+              Apply to all
+            </span>
+            {STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  const next: Record<string, CompletionStatus> = {};
+                  for (const d of DAYS) {
+                    for (const row of SLOTS) {
+                      next[`${d}:${row.slot}`] = s;
+                    }
+                  }
+                  setCompletions(next);
+                }}
+                style={statusStyle(s)}
+                className="font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-[5px] border"
+                title={`Mark all 35 meals as ${STATUS_LABEL[s]}`}
+              >
+                {STATUS_LABEL[s]}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCompletions({})}
+              className="font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-[5px] border border-border text-ink-tertiary hover:text-ink hover:border-border-strong"
+              title="Clear all"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
         <Card className="p-0 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px]">
@@ -175,11 +222,11 @@ export default function CheckInPage({
                                     return next;
                                   })
                                 }
+                                style={current === s ? statusStyle(s) : undefined}
                                 className={cn(
                                   "font-mono text-[9px] uppercase tracking-widest px-1.5 py-1 rounded-[5px] border transition-colors",
-                                  current === s
-                                    ? STATUS_COLOR[s]
-                                    : "bg-transparent border-border text-ink-tertiary hover:border-border-strong hover:text-ink",
+                                  current !== s &&
+                                    "bg-transparent border-border text-ink-tertiary hover:border-border-strong hover:text-ink",
                                 )}
                                 title={STATUS_LABEL[s]}
                               >

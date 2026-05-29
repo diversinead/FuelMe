@@ -194,3 +194,52 @@ export function getDb(): FuelDB {
   if (!_db) _db = new FuelDB();
   return _db;
 }
+
+// ---------- Cloning helpers (Phase 4.5) ----------
+
+/**
+ * Duplicate the source week's FuellingPlan + TrainingWeek into the destination
+ * week. Used by the §4.7 "Copy last week" chooser path. Each cloned record
+ * gets the destination weekId; the FuellingPlan is stamped with the current
+ * timestamp and `manuallyEdited: true` so downstream regenerate flows know
+ * it's athlete-curated rather than AI-fresh.
+ *
+ * Returns which records were cloned so the caller can fall back to "Generate
+ * fresh" if there's nothing to copy.
+ */
+export async function clonePlan(
+  srcWeekId: string,
+  destWeekId: string,
+): Promise<{ clonedPlan: boolean; clonedTraining: boolean }> {
+  const db = getDb();
+  const [srcPlan, srcTraining] = await Promise.all([
+    db.fuellingPlans.get(srcWeekId),
+    db.trainingWeeks.get(srcWeekId),
+  ]);
+
+  const now = new Date().toISOString();
+  let clonedPlan = false;
+  let clonedTraining = false;
+
+  if (srcPlan) {
+    await db.fuellingPlans.put({
+      ...srcPlan,
+      id: destWeekId,
+      weekId: destWeekId,
+      generatedAt: now,
+      manuallyEdited: true,
+    });
+    clonedPlan = true;
+  }
+
+  if (srcTraining) {
+    await db.trainingWeeks.put({
+      ...srcTraining,
+      id: destWeekId,
+      weekStart: destWeekId,
+    });
+    clonedTraining = true;
+  }
+
+  return { clonedPlan, clonedTraining };
+}

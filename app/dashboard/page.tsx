@@ -4,8 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { motion } from "framer-motion";
-import { ArrowUpRight, CalendarDays, Flame, ListChecks } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowUpRight, CalendarDays, Flame, ListChecks, X } from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -16,7 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { SessionTag } from "@/components/shared/SessionTag";
-import { getDb, type Day, type DaySession } from "@/lib/db";
+import {
+  getDb,
+  clonePlan,
+  type Day,
+  type DaySession,
+  type FuellingPlan,
+} from "@/lib/db";
 import { weekIdFor, nextWeekId, formatWeekRange } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { ease, staggerList, staggerItem } from "@/lib/motion";
@@ -50,12 +56,123 @@ export default function DashboardPage() {
     };
   }, [currentWeekId]);
 
+  // Phase 4.5 chooser state
+  const [chooserOpen, setChooserOpen] = React.useState(false);
+  type ChooserPath = "copy" | "adjust" | "fresh";
+  const [chooserPath, setChooserPath] = React.useState<ChooserPath>("copy");
+  const [chooserBusy, setChooserBusy] = React.useState(false);
+  const [chooserError, setChooserError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (data && !data.profile) router.replace("/onboarding");
   }, [data, router]);
 
   if (!data) return <DashLoading />;
   if (!data.profile) return null;
+
+  // Plan-for-current-week exists? Drives default chooser selection.
+  const currentWeekPlan = data.recentPlans.find(
+    (p) => p.weekId === currentWeekId,
+  );
+  const canCopy = !!currentWeekPlan;
+
+  function openChooser() {
+    setChooserPath(canCopy ? "copy" : "fresh");
+    setChooserError(null);
+    setChooserOpen(true);
+  }
+
+  function closeChooser() {
+    if (chooserBusy) return;
+    setChooserOpen(false);
+    setChooserError(null);
+  }
+
+  async function confirmChooser() {
+    setChooserBusy(true);
+    setChooserError(null);
+    try {
+      if (chooserPath === "copy") {
+        const result = await clonePlan(currentWeekId, nextWid);
+        if (!result.clonedPlan) {
+          throw new Error(
+            "No plan to copy. Choose Generate fresh instead.",
+          );
+        }
+        router.push(`/plan/${nextWid}`);
+        return;
+      }
+
+      if (chooserPath === "fresh") {
+        // Clone this week's training as a scaffold for next week (athlete
+        // can edit in Settings if it should differ), then generate fresh.
+        await clonePlan(currentWeekId, nextWid);
+
+        const db = getDb();
+        const [profile, foodPrefs, trainingWeek] = await Promise.all([
+          db.profile.get("me"),
+          db.foodPreferences.get("me"),
+          db.trainingWeeks.get(nextWid),
+        ]);
+
+        if (!profile || !foodPrefs) {
+          throw new Error(
+            "Missing profile or food preferences. Re-run onboarding first.",
+          );
+        }
+        if (!trainingWeek) {
+          throw new Error(
+            "No training week available to plan from. Add this week's training first.",
+          );
+        }
+
+        const response = await fetch("/api/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "fresh",
+            profile,
+            foodPreferences: foodPrefs,
+            trainingWeek,
+            previousFeedback:
+              data?.lastCheckIn?.aiFeedback?.recommendations?.join("\n") ||
+              undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(
+            (errBody as { error?: string }).error ??
+              `Plan generation failed (HTTP ${response.status}).`,
+          );
+        }
+
+        const apiPlan = (await response.json()) as Omit<
+          FuellingPlan,
+          "id" | "weekId" | "generatedAt"
+        >;
+        await db.fuellingPlans.put({
+          ...apiPlan,
+          id: nextWid,
+          weekId: nextWid,
+          generatedAt: new Date().toISOString(),
+          manuallyEdited: false,
+        });
+
+        router.push(`/plan/${nextWid}`);
+        return;
+      }
+
+      // chooserPath === "adjust" — disabled in Phase 4.5
+      throw new Error("Adjust last week lands in Phase 5.");
+    } catch (e) {
+      setChooserError(
+        e instanceof Error ? e.message : "Something went wrong.",
+      );
+      setChooserBusy(false);
+    }
+  }
 
   const sessionsCount = data.trainingWeek
     ? data.trainingWeek.sessions.filter((s) => s.type !== "rest").length
@@ -199,13 +316,13 @@ export default function DashboardPage() {
             </p>
             <Button
               fullWidth
-              onClick={() =>
-                router.push(
-                  data.checkInForCurrent
-                    ? `/plan/${nextWid}`
-                    : `/checkin/${currentWeekId}`,
-                )
-              }
+              onClick={() => {
+                if (data.checkInForCurrent) {
+                  openChooser();
+                } else {
+                  router.push(`/checkin/${currentWeekId}`);
+                }
+              }}
             >
               {data.checkInForCurrent ? "Plan next week" : "Do check-in"}
             </Button>
@@ -269,6 +386,157 @@ export default function DashboardPage() {
           </Card>
         </section>
       )}
+
+      {/* Plan next week chooser (Phase 4.5 / SPEC §4.7) */}
+      <AnimatePresence>
+        {chooserOpen && (
+          <motion.div
+            key="chooser-overlay"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={closeChooser}
+              aria-hidden
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="chooser-title"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 4 }}
+              transition={{ duration: 0.18, ease: ease.out }}
+              className="relative w-full max-w-md rounded-card bg-surface-1 border border-border p-6 shadow-elevated"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2
+                    id="chooser-title"
+                    className="font-display text-display-sm text-ink"
+                  >
+                    Plan next week
+                  </h2>
+                  <p className="text-body-sm text-ink-secondary mt-1">
+                    {formatWeekRange(nextWid)}. How should we build it?
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeChooser}
+                  disabled={chooserBusy}
+                  aria-label="Close"
+                  className="shrink-0 -mt-1 -mr-1 p-1 text-ink-tertiary hover:text-ink rounded"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                {(
+                  [
+                    {
+                      value: "copy",
+                      title: "Copy last week",
+                      hint: "Duplicate this week's plan as a starting point. Edit any meal inline.",
+                      disabled: !canCopy,
+                      disabledReason:
+                        "No plan to copy yet — generate one for this week first.",
+                    },
+                    {
+                      value: "adjust",
+                      title: "Adjust last week",
+                      hint: "Carry forward last week's plan, then adjust meals on days whose training changes.",
+                      disabled: true,
+                      disabledReason: "Coming in Phase 5.",
+                    },
+                    {
+                      value: "fresh",
+                      title: "Generate fresh",
+                      hint: "AI builds a brand new plan from your profile, prefs, and next week's training.",
+                      disabled: false,
+                      disabledReason: undefined as string | undefined,
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const selected = chooserPath === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      className={cn(
+                        "flex items-start gap-3 p-3 rounded-button border transition-colors",
+                        opt.disabled
+                          ? "border-border bg-surface-2 opacity-50 cursor-not-allowed"
+                          : selected
+                            ? "border-accent bg-surface-2 cursor-pointer"
+                            : "border-border bg-surface-2 hover:border-border-strong cursor-pointer",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="chooser-path"
+                        value={opt.value}
+                        checked={selected}
+                        disabled={opt.disabled}
+                        onChange={() => setChooserPath(opt.value)}
+                        className="mt-1 accent-accent"
+                      />
+                      <div className="flex-1">
+                        <div className="text-body text-ink">{opt.title}</div>
+                        <p className="text-body-sm text-ink-tertiary mt-1 leading-snug">
+                          {opt.hint}
+                        </p>
+                        {opt.disabled && opt.disabledReason && (
+                          <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary mt-1">
+                            {opt.disabledReason}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {chooserError && (
+                <div
+                  className="mt-4 p-3 rounded-button"
+                  style={{
+                    border:
+                      "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+                    background:
+                      "color-mix(in srgb, var(--danger) 8%, transparent)",
+                  }}
+                >
+                  <p className="text-body-sm text-danger leading-snug">
+                    {chooserError}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={closeChooser}
+                  disabled={chooserBusy}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={confirmChooser} disabled={chooserBusy}>
+                  {chooserBusy
+                    ? chooserPath === "copy"
+                      ? "Copying…"
+                      : "Generating…"
+                    : "Confirm"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.main>
   );
 }
