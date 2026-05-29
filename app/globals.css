@@ -42,6 +42,7 @@
   --session-hard: #dc2626;
   --session-long: #2563eb;
   --session-rest: #6b7280;
+  --session-custom: #f97316;   /* orange — non-preset / cross-training (Gym, Pilates, …) */
 
   /* Functional */
   --success: #10b981;
@@ -80,6 +81,7 @@
   --session-hard: #b91c1c;
   --session-long: #1d4ed8;
   --session-rest: #57534e;
+  --session-custom: #ea580c;
 
   --border-subtle: rgba(0, 0, 0, 0.03);
   --border-default: rgba(0, 0, 0, 0.06);
@@ -167,6 +169,7 @@ html[data-theme="dark"] body::before {
 .session-tag.hard { color: var(--session-hard); background: color-mix(in srgb, var(--session-hard) 15%, transparent); border-color: color-mix(in srgb, var(--session-hard) 30%, transparent); }
 .session-tag.long { color: var(--session-long); background: color-mix(in srgb, var(--session-long) 15%, transparent); border-color: color-mix(in srgb, var(--session-long) 30%, transparent); }
 .session-tag.rest { color: var(--session-rest); background: color-mix(in srgb, var(--session-rest) 15%, transparent); border-color: color-mix(in srgb, var(--session-rest) 30%, transparent); }
+.session-tag.custom { color: var(--session-custom); background: color-mix(in srgb, var(--session-custom) 15%, transparent); border-color: color-mix(in srgb, var(--session-custom) 30%, transparent); }
 
 /* Macro pills */
 .macro-pill {

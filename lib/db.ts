@@ -63,7 +63,6 @@ export interface DaySession {
   description: string;     // derived for display
   distanceKm?: number;     // derived total
   durationMin?: number;    // derived total
-  intensity?: 1 | 2 | 3 | 4 | 5;
   sessions?: SubSession[]; // source of truth for multi-session days
 }
 

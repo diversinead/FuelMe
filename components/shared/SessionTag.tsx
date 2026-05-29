@@ -25,13 +25,28 @@ const LABEL: Record<SessionType, string> = {
   cross: "Cross",
 };
 
+/**
+ * Coloured pill summarising one session. When `customLabel` is set
+ * (e.g. "Gym", "Pilates", a free-text customType from SubSession),
+ * the tag renders in the orange `custom` variant with the supplied
+ * text instead of the preset label. Otherwise it picks colour + label
+ * from the underlying SessionType.
+ */
 export function SessionTag({
   type,
+  customLabel,
   className,
 }: {
   type: SessionType;
+  customLabel?: string;
   className?: string;
 }) {
+  const label = customLabel?.trim();
+  if (label) {
+    return (
+      <span className={cn("session-tag custom", className)}>{label}</span>
+    );
+  }
   return (
     <span className={cn("session-tag", VARIANT[type], className)}>
       {LABEL[type]}

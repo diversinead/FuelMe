@@ -42,11 +42,12 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --ink-tertiary: #71717a;      /* muted, captions */
   --ink-inverse: #0a0a0b;       /* text on accent surfaces */
 
-  /* Brand accent — a single confident colour. Burnt amber / running-track orange. */
-  --accent: #f97316;            /* primary CTA, focus rings, key data */
-  --accent-hover: #fb923c;
-  --accent-muted: #f973161a;    /* 10% accent for backgrounds, badges */
-  --accent-ring: #f9731640;     /* 25% for focus rings */
+  /* Brand accent — a single confident colour. Teal — reads as data/precision
+     without the running-app orange overlap (Strava et al.). */
+  --accent: #14b8a6;            /* primary CTA, focus rings, key data */
+  --accent-hover: #2dd4bf;
+  --accent-muted: #14b8a61a;    /* 10% accent for backgrounds, badges */
+  --accent-ring: #14b8a640;     /* 25% for focus rings */
 
   /* Session colours — pulled forward from the print sheet but recalibrated for dark mode */
   --session-easy: #65a30d;       /* lime-700 — easy days */
@@ -84,10 +85,10 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --ink-tertiary: #71717a;
   --ink-inverse: #fafaf9;
 
-  --accent: #ea580c;             /* slightly deeper orange for light bg contrast */
-  --accent-hover: #c2410c;
-  --accent-muted: #ea580c14;
-  --accent-ring: #ea580c40;
+  --accent: #0d9488;             /* deeper teal for light bg contrast */
+  --accent-hover: #0f766e;
+  --accent-muted: #0d948814;
+  --accent-ring: #0d948840;
 
   --session-easy: #4d7c0f;
   --session-hard: #b91c1c;
@@ -120,39 +121,23 @@ Three families, each with a specific job. Keep Fraunces for the print views only
 --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
 ```
 
-**Practical setup with Next.js `next/font`:**
+**Practical setup — `<link>` tag, not `next/font/google`:**
 
-Söhne is paid (Klim Type Foundry). Use **Manrope** as the free substitute — it has the same compact, slightly geometric athletic feel. Update `app/fonts.ts`:
+Söhne is paid (Klim Type Foundry). Use **Manrope** as the free substitute — same compact, slightly geometric athletic feel.
 
-```ts
-import { Manrope, Inter, JetBrains_Mono, Fraunces } from 'next/font/google';
+`next/font/google` fetches at compile time and **hangs the dev server when `fonts.gstatic.com` is slow or unreachable**. We load the font stylesheets via `<link>` in `app/layout.tsx` instead — async, browser-side, with system-font fallbacks (declared in `globals.css`) so the page never blocks:
 
-export const display = Manrope({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['500', '600', '700', '800'],
-});
-
-export const body = Inter({
-  subsets: ['latin'],
-  variable: '--font-body',
-  weight: ['400', '500', '600'],
-});
-
-export const mono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500', '700'],
-});
-
-// Print routes only — already in spec
-export const fraunces = Fraunces({
-  subsets: ['latin'],
-  variable: '--font-fraunces',
-  weight: ['400', '600', '800'],
-  style: ['normal', 'italic'],
-});
+```tsx
+// app/layout.tsx <head>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400&display=swap"
+  rel="stylesheet"
+/>
 ```
+
+The font-family CSS variables (`--font-display`, `--font-body`, `--font-mono`, `--font-fraunces`) are declared in `globals.css` with system-font fallbacks. `app/fonts.ts` is a comment-only file documenting this decision.
 
 **Type scale** (Tailwind extends in `tailwind.config.ts`):
 
@@ -246,7 +231,7 @@ Headings use `font-display`. Body uses `font-body`. All numbers, badges, time st
 - **Page container:** max-width 1240px, side padding 24px desktop / 20px mobile, centered.
 - **Dashboard grid:** asymmetric. The "This Week" card spans 2/3 width on desktop, with a stacked column of smaller cards in the remaining 1/3. Don't default to equal-width grid cells.
 - **Generous whitespace** between sections (64px desktop / 40px mobile vertical rhythm).
-- **No more than two visible accent colours per screen.** The accent orange is precious — overuse kills its impact.
+- **No more than two visible accent colours per screen.** The accent teal is precious — overuse kills its impact.
 
 ---
 
@@ -315,9 +300,14 @@ export const ease = {
 - Step transitions: outgoing step fades + slides left 24px, incoming fades + slides in from right 24px.
 
 ### Dashboard
-- **Hero "This Week" card:** spans 2/3 width on desktop. Big week-of date in `font-display` display-lg. Below: row of 7 day chips (Mon-Sun) showing session type with coloured tag. Tap a chip → jump to that day's meals in the plan view.
-- **Quick stats row** below the hero: 3 cards in a row — "Sessions this week", "Plan completion %", "Energy avg" (from check-ins). Each shows a big monospace number and a tiny label below.
-- **Right column (1/3 width):** stacked smaller cards — "Last week's wins" (top 1-2 bullets from AI feedback), "Up next" CTA card for either check-in or next week planning.
+- **Hero "This Week" card:** spans 2/3 width on desktop. Big week-of date in `font-display` display-lg. Below the headline: a grid of 7 day columns (Mon–Sun). Each column shows **one tile per sub-session** — a Mon with AM Easy + PM Gym renders as two stacked tiles inside the Mon column. Each tile carries:
+  - The AM/PM label (when set), top-left, `font-mono mono-sm` in `--ink-tertiary`
+  - The coloured session tag for the underlying `type` — or the free-text `customType` ("Gym", "Pilates") for non-preset sessions, still styled as a tag
+  - Tap any tile → jump to that day's meals in the plan view
+  - A rest day = empty column, no tiles, just the day name in `--ink-tertiary`
+- Also in the hero: an inline "Edit training" link (deep-links to `/settings?tab=training`) next to the session count.
+- **Quick stats row** below the hero: 3 cards in a row — "Sessions this week", "Plan completion %", "Energy" (from check-ins). Each shows a big monospace number and a tiny label below. Show "—" when no check-in exists yet.
+- **Right column (1/3 width):** stacked smaller cards — "Last week's wins" (top 1–2 bullets from AI feedback with empty-state fallback), "Up next" CTA card that flips between "Do this week's check-in" and "Plan next week" based on check-in status.
 - **History feed at the bottom:** vertical list of past weeks with status pills and dates.
 
 ### Plan editor (on-screen, not print)
@@ -381,6 +371,7 @@ const config: Config = {
           DEFAULT: 'var(--accent)',
           hover: 'var(--accent-hover)',
           muted: 'var(--accent-muted)',
+          ring: 'var(--accent-ring)',
         },
         session: {
           easy: 'var(--session-easy)',
@@ -404,6 +395,10 @@ const config: Config = {
         elevated: 'var(--shadow-elevated)',
       },
       fontSize: { /* paste the scale from §3 */ },
+      borderRadius: {
+        card: '16px',
+        button: '10px',
+      },
     },
   },
 };
@@ -435,11 +430,11 @@ After Claude Code applies this, the app should pass these visual tests:
 - [ ] Dashboard "This Week" card has the radial gradient wash from top-right
 - [ ] All numbers (dates, durations, macros, quantities) appear in JetBrains Mono
 - [ ] Headings appear in Manrope (more geometric/condensed than default Inter)
-- [ ] Primary buttons are accent-orange, never blue
+- [ ] Primary buttons are accent-teal, never blue or orange
 - [ ] Session tags use the three coloured pill style on both light and dark
 - [ ] Cards have visible but subtle borders, not heavy shadcn defaults
 - [ ] Page transitions fade + slide, not instant snap
-- [ ] Focus states show the orange ring, not browser default
+- [ ] Focus states show the teal ring, not browser default
 - [ ] Print routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`) are COMPLETELY UNCHANGED — still editorial Fraunces + cream background
 
 If any of these fail, fix before declaring this addendum complete.

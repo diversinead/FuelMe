@@ -9,8 +9,8 @@ This document is the complete brief. Build it in the order given. Do not skip ah
 ## 1. Stack & key decisions
 
 - **Framework:** Next.js 14 (App Router), TypeScript, React 18
-- **Styling:** Tailwind CSS + shadcn/ui components
-- **Fonts:** Fraunces (serif) + JetBrains Mono — already used in the reference HTML, keep them
+- **Styling:** Tailwind CSS + hand-built UI primitives in `components/ui/*` (same API surface as shadcn — Button, Card, Input, Textarea, RadioGroup, Checkbox, Select, Label, NumberInput, ChipInput — but no generator dependency). See DESIGN.md for the full app-shell language.
+- **Fonts:** Manrope (display) + Inter (body) + JetBrains Mono (mono) for the app shell; Fraunces (serif) reserved for the print routes. Loaded via `<link>` in `app/layout.tsx` (not `next/font/google` — see DESIGN.md §3 for rationale).
 - **Local data:** Dexie.js (IndexedDB wrapper). All user data lives on-device for now.
 - **AI:** OpenAI GPT-4o-mini via Next.js Route Handlers (`/api/*`). Key in `OPENAI_API_KEY` env var, **never exposed to client**.
 - **PDF/print:** Native `window.print()` against print-styled routes — the reference HTML files already print beautifully, just replicate that approach.
@@ -21,11 +21,13 @@ This document is the complete brief. Build it in the order given. Do not skip ah
 
 ---
 
-## 2. Design language (non-negotiable)
+## 2. Design language
 
-The two reference HTML files (`fueling-plan-print.html`, `weekly-grocery-list.html`) define the visual identity. Match it exactly for the printable views, and extend the same language to the rest of the app.
+The two reference HTML files (`fueling-plan-print.html`, `weekly-grocery-list.html`) define the **print** visual identity (editorial, warm, paper-feel). The in-app shell (everything *not* under `/plan/[weekId]/print` or `/grocery/[weekId]/print`) uses a separate dark visual language defined in **DESIGN.md** — Whoop/Linear-adjacent, dark by default, teal accent.
 
-**CSS variables to define globally:**
+The tokens below apply **only** to the print routes. They are scoped under `.sheet` in `styles/print-plan.ts` and `styles/print-grocery.ts` so they don't collide with the app-shell tokens.
+
+**Print-route CSS variables:**
 
 ```css
 --ink: #000;
@@ -39,18 +41,18 @@ The two reference HTML files (`fueling-plan-print.html`, `weekly-grocery-list.ht
 --divider: #999;
 ```
 
-**Type:**
+**Print-route type:**
 - Headings & body: Fraunces (400, 600, 800 + italic)
 - Labels, tags, monospace numbers (macros, quantities): JetBrains Mono (400, 500, 700)
 
-**Components that must look exactly like the reference:**
+**Print-route components that must look exactly like the reference:**
 - Section headers — black bar, white uppercase JetBrains Mono text, tight letter-spacing
 - Session tags — small uppercase pills in `--accent-*` colours
 - Macro "pills" — small monospace numbers with carbs/protein labels
 - Checkbox lists with warm cream background and ruled dividers
 - "Notes" boxes — cream background, numbered rules in rust monospace
 
-For the rest of the app (forms, dashboard, AI feedback view), use shadcn/ui defaults themed to match: cream backgrounds, ink text, JetBrains Mono for labels and numeric input, Fraunces for any prose.
+For the rest of the app (forms, dashboard, plan editor, grocery list, check-in, settings), see **DESIGN.md** — dark surfaces, teal accent, Manrope display, Inter body, JetBrains Mono for all numbers and labels.
 
 ---
 
@@ -93,14 +95,39 @@ interface TrainingWeek {
   id: string;                   // weekStartISO, e.g. "2026-06-01"
   weekStart: string;            // Monday ISO date
   sessions: DaySession[];       // 7 entries Mon→Sun
+  weekNotes?: string;           // free-text week-level context (focus, fatigue, taper,
+                                // travel, race week). The only prose the athlete supplies
+                                // about the week — feeds the /api/plan prompt.
+}
+
+type SessionType =
+  | 'rest' | 'easy' | 'easy_double'
+  | 'intervals' | 'threshold' | 'tempo'
+  | 'long' | 'race' | 'cross';
+
+// A single sub-session within a day (AM run, PM gym, etc.). This is the
+// SOURCE OF TRUTH — DaySession's type/description/totals are derived from
+// the sub-sessions via reconcileDaySession() in lib/defaults.ts.
+interface SubSession {
+  id: string;
+  label?: string;               // "AM" | "PM" | undefined
+  type: SessionType;            // intensity bucket — drives colour + fuelling
+  customType?: string;          // free-text override ("Gym chest day", "Pilates").
+                                // When set, displayed in place of SESSION_LABELS[type].
+                                // Underlying type defaults to "cross" so fuelling
+                                // intensity still classifies correctly.
+  distanceKm?: number;
+  durationMin?: number;
 }
 
 interface DaySession {
   day: 'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun';
-  type: 'rest'|'easy'|'easy_double'|'intervals'|'threshold'|'tempo'|'long'|'race'|'cross';
-  description: string;          // "AM 1hr easy + PM 35 min"
-  durationMin?: number;
-  intensity?: 1|2|3|4|5;
+  sessions?: SubSession[];      // SOURCE OF TRUTH — empty/undefined = rest day
+  // --- everything below is DERIVED via reconcileDaySession(); never edit directly ---
+  type: SessionType;            // highest-priority type across sub-sessions
+  description: string;          // concatenation of describeSub() per sub-session
+  distanceKm?: number;          // total
+  durationMin?: number;         // total
 }
 
 // FuellingPlan — generated output for a given week
@@ -199,7 +226,7 @@ Routes (App Router):
 
 ### 4.1 Onboarding (`/onboarding`)
 
-Three-step wizard. Use a shadcn `Card` with progress dots at top.
+Three-step wizard. Full-screen layout per **DESIGN.md §8** (centered 560px column, 3-step horizontal progress bar — not a card with dots).
 
 **Step 1 — Profile**
 - Name (optional)
@@ -227,17 +254,25 @@ Three-step wizard. Use a shadcn `Card` with progress dots at top.
 - Provide sensible default suggestions next to each field
 
 **Step 3 — This week's training**
-- Grid of 7 day cards (Mon→Sun)
-- Each card: session type dropdown, description input, optional duration
 - Quick presets at top: "5-day runner", "Marathon block", "Rest week"
+- Vertical list of 7 day cards (Mon→Sun). Each card shows the day name + one coloured **tile per sub-session** (so a Mon with AM Easy + PM Gym renders as two stacked tiles in that card) + a small "Add session" button. Empty card = rest day.
+- Tapping a tile (or Add) opens an inline sub-session editor with:
+  - **AM/PM** — compact toggle for the `label` field. Tap a selected pill to clear it (single-session days can leave both off).
+  - **Type** — free-text input backed by a `<datalist>` of presets (Easy, Intervals, Threshold, Tempo, Long, Race, Cross-train). Typing a preset label sets `SubSession.type` for colour/intensity bucketing. Typing anything else (e.g. "Gym", "Pilates", "Bouldering") stores the string as `customType` and falls back to `type: 'cross'` for fuelling intensity.
+  - **Distance** (km) and **Time** (min) — number inputs with stacked chevron-up/down steppers on the right edge; field remains directly editable.
+- A single **week-level notes** textarea below the day cards (`TrainingWeek.weekNotes`). This is the only prose the athlete supplies about the week — focus, fatigue, taper, travel, race-week context. The `/api/plan` prompt reads this in place of per-session descriptions.
 - Submit → generate plan → redirect to `/plan/[weekId]`
 
 ### 4.2 Dashboard (`/dashboard`)
 
-- Big card top: **This week** — week start date, session summary, "View plan", "View grocery list", "Do check-in"
-- Card: **Last week's check-in feedback** (if exists) — wins/missed/recommendations summary
-- Card: **Next week** — "Plan next week's training →"
-- Sidebar/footer: list of past weeks with status badges (plan done / shopping done / checked in)
+Layout per **DESIGN.md §8** — 2/3 + 1/3 asymmetric grid on desktop, stacked on mobile.
+
+- **Hero "This week" card** (2/3 width): week-of date, session count, action buttons (View plan, Grocery list), inline "Edit training" link (deep-links to `/settings?tab=training`), and a grid of 7 day columns (Mon–Sun). Each day column shows **one tile per sub-session** — a Mon with AM Easy + PM Gym renders as two stacked tiles in that column. Each tile carries the AM/PM label (when set) and the session's coloured tag (or the free-text `customType` for non-preset sessions). Tapping a tile jumps to that day's meals in the plan view.
+- **Quick stats row** (3 cards under the hero): Sessions this week / Plan completion % / Energy avg — populated from the current week's check-in when present, "—" otherwise.
+- **Right column** (1/3 width):
+  - **Last week's wins** card — top 1–2 bullets from the previous week's AI feedback (with empty-state fallback copy when there's no prior check-in)
+  - **Up next** CTA card — flips between "Do this week's check-in" and "Plan next week" based on whether the current week has been checked in
+- **History feed** at the bottom: list of past weeks with status badges (plan done / shopping done / checked in)
 
 ### 4.3 Plan view (`/plan/[weekId]`)
 
@@ -283,7 +318,12 @@ On-screen:
 
 ### 4.6 Settings
 
-Plain forms to edit profile and food prefs. Tabs for each section.
+Plain forms with three tabs:
+- **Profile** — reuses `ProfileStep` from onboarding
+- **Food preferences** — reuses `FoodPrefsStep`
+- **Training** — reuses `TrainingStep`, scoped to the **current week's** `TrainingWeek`. Loads existing or initializes an empty week. Save commits to `db.trainingWeeks`.
+
+Honors a `?tab=profile|food|training` query param so the dashboard's "Edit training" link deep-links straight to the right tab.
 
 ---
 
@@ -327,58 +367,61 @@ That's the entire change. The client UI gets a "Settings → Use my own OpenAI k
 ```
 /app
   /api
-    /plan/route.ts
-    /grocery/route.ts
-    /feedback/route.ts
+    /plan/route.ts             # Phase 3
+    /grocery/route.ts          # Phase 4
+    /feedback/route.ts         # Phase 5
   /onboarding/page.tsx
   /dashboard/page.tsx
   /plan/[weekId]/page.tsx
   /plan/[weekId]/print/page.tsx
   /grocery/[weekId]/page.tsx
   /grocery/[weekId]/print/page.tsx
-  /checkin/[weekId]/page.tsx
+  /checkin/[weekId]/page.tsx   # Phase 5
   /settings/page.tsx
-  layout.tsx
-  globals.css           # CSS vars + Tailwind directives
-  fonts.ts              # Next.js font loaders for Fraunces + JetBrains Mono
+  page.tsx                     # onboarding gate
+  layout.tsx                   # root layout + AppBar + font <link>s
+  globals.css                  # app-shell tokens (DESIGN.md) + Tailwind directives
+  fonts.ts                     # comment-only file documenting the <link> decision
+                               # (next/font/google hangs dev when fonts.gstatic.com is slow)
 
 /components
-  /ui/                  # shadcn components
-  /plan/
-    PlanTable.tsx
-    MealCell.tsx
-    EditMealPopover.tsx
-    RulesBox.tsx
-    DayTotalsRow.tsx
-  /grocery/
-    GroceryCategory.tsx
-    GroceryItem.tsx
-    NotesBox.tsx
-    MacroCheckTable.tsx
+  /ui/                         # hand-built primitives, shadcn-compatible API
+    button.tsx, card.tsx, input.tsx, textarea.tsx,
+    radio-group.tsx, checkbox.tsx, select.tsx, label.tsx, number-input.tsx
   /onboarding/
     ProfileStep.tsx
     FoodPrefsStep.tsx
-    TrainingStep.tsx
+    TrainingStep.tsx           # includes AmPmToggle + free-text TypeInput w/ datalist
     ChipInput.tsx
-  /checkin/
-    MealCompletionGrid.tsx
-    FeedbackPanel.tsx
   /shared/
+    AppBar.tsx                 # sticky top bar; hides itself on /*/print routes
+    ThemeScript.tsx            # SSR-safe early theme application (no FOUC)
+    ThemeToggle.tsx            # sun/moon, persists to localStorage
     SectionHeader.tsx
     SessionTag.tsx
     MacroPill.tsx
-    PrintLayout.tsx
+  /plan/, /grocery/, /checkin/   # Phase 3+ — extract from page files when complexity demands
 
 /lib
-  db.ts                 # Dexie instance + table types
-  openai.ts             # server-only OpenAI client factory
-  prompts.ts            # the three prompts as exported strings
-  date.ts               # weekId helpers (Monday-aligned ISO)
-  defaults.ts           # default food suggestions for onboarding
+  db.ts                        # Dexie instance + table types
+  date.ts                      # weekId helpers (Monday-aligned ISO)
+  defaults.ts                  # FOOD_SUGGESTIONS, SESSION_LABELS, TRAINING_PRESETS,
+                               # newSubSession, reconcileDaySession, describeSub
+  motion.ts                    # framer-motion easings + stagger variants
+  utils.ts                     # cn() — clsx + tailwind-merge
+  mock.ts                      # seed FuellingPlan / GroceryList for Phase 1 click-through
+  openai.ts                    # Phase 3 — server-only OpenAI client factory
+  prompts.ts                   # Phase 3 — the three prompts as exported strings
 
 /styles
-  print-plan.css        # extracted from fueling-plan-print.html
-  print-grocery.css     # extracted from weekly-grocery-list.html
+  print-plan.ts                # CSS string injected via <style> in /plan/[weekId]/print
+  print-grocery.ts             # CSS string injected via <style> in /grocery/[weekId]/print
+                               # (.ts not .css — lets the AppBar conditional + clean
+                               # unmount on client-side nav work seamlessly)
+
+/reference
+  fueling-plan-print.html      # source of truth for the plan print sheet
+  weekly-grocery-list.html     # source of truth for the grocery print sheet
 ```
 
 ---
@@ -473,6 +516,7 @@ Principles you always apply:
 4. Recovery window matters most after hard or long sessions: get 20+ g protein and 40–60 g carbs within 30 minutes.
 5. Use the athlete's stated food preferences. Never suggest foods on their "avoid" list. Repeat staples — variety is overrated, consistency wins.
 6. For female athletes with cycle-aware tracking enabled, mention a luteal-phase note (slightly higher carbs, supports sleep) for one dinner.
+7. **Read `trainingWeek.weekNotes` as the athlete's only free-text colour about the week** (focus, fatigue, taper, travel, race week). Per-session prose descriptions are no longer collected — infer each session's intent from its structured fields: `type` + `customType` for the activity, `label` for AM/PM, `distanceKm` / `durationMin` for volume. A `customType` like "Gym" or "Pilates" means non-running cross-training — fuel it as a moderate cross-train day unless `weekNotes` says otherwise.
 
 You output ONLY valid JSON matching this exact schema — no prose, no markdown, no code fences:
 
@@ -506,10 +550,26 @@ isCritical = true for meals immediately before or after a hard/long session, or 
 {
   "profile": { ...Profile },
   "foodPreferences": { ...FoodPreferences },
-  "trainingWeek": { ...TrainingWeek },
+  "trainingWeek": {
+    "id": "2026-06-01",
+    "weekStart": "2026-06-01",
+    "weekNotes": "Race week — tapering. Travel Thu PM, race Sat AM.",
+    "sessions": [
+      {
+        "day": "Mon",
+        "sessions": [
+          { "label": "AM", "type": "easy", "distanceKm": 8, "durationMin": 45 },
+          { "label": "PM", "type": "cross", "customType": "Gym", "durationMin": 40 }
+        ]
+      }
+      // ... 6 more days
+    ]
+  },
   "previousFeedback": "optional string carrying forward last week's AI recommendations"
 }
 ```
+
+Note: only `SubSession` fields are sent — the derived `DaySession.type`/`description`/`distanceKm`/`durationMin` are recomputed server-side if needed, but the prompt should drive off the raw sub-sessions plus `weekNotes`.
 
 ## Appendix B — `/api/grocery` prompt
 
@@ -604,10 +664,10 @@ On Vercel, add the same as a Project Environment Variable.
 ```bash
 npx create-next-app@latest fuel --typescript --tailwind --app --src-dir=false --import-alias="@/*"
 cd fuel
-npx shadcn@latest init
-npx shadcn@latest add button card input textarea label radio-group checkbox dialog popover tabs select slider toast
-npm install dexie dexie-react-hooks openai date-fns
+npm install dexie dexie-react-hooks openai date-fns framer-motion lucide-react clsx tailwind-merge
 npm install -D @types/node
 ```
+
+UI primitives are hand-built in `components/ui/*` — same API as shadcn but no generator run. Add new primitives there as needed; copy patterns from existing components for consistency.
 
 Then start with Phase 1.

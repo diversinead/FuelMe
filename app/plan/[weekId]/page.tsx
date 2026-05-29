@@ -97,9 +97,11 @@ function PlanView({ plan }: { plan: FuellingPlan }) {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="secondary" disabled>
-            <Printer size={16} /> Print (Phase 2)
-          </Button>
+          <Link href={`/plan/${plan.weekId}/print?auto=1`} target="_blank">
+            <Button variant="secondary">
+              <Printer size={16} /> Print
+            </Button>
+          </Link>
           <Button variant="secondary" disabled>
             <RefreshCw size={16} /> Regenerate (Phase 3)
           </Button>

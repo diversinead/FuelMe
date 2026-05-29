@@ -146,7 +146,19 @@ function DayCard({
           <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary w-8">
             {day.day}
           </span>
-          <SessionTag type={day.type} />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {sessions.length === 0 ? (
+              <SessionTag type="rest" />
+            ) : (
+              sessions.map((s) => (
+                <SessionTag
+                  key={s.id}
+                  type={s.type}
+                  customLabel={s.customType}
+                />
+              ))
+            )}
+          </div>
           <span className="font-mono text-mono-sm text-ink-tertiary">
             {[
               day.distanceKm != null ? `${day.distanceKm} km` : null,

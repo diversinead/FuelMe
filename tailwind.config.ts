@@ -34,6 +34,7 @@ const config: Config = {
           hard: "var(--session-hard)",
           long: "var(--session-long)",
           rest: "var(--session-rest)",
+          custom: "var(--session-custom)",
         },
         border: {
           subtle: "var(--border-subtle)",

@@ -124,9 +124,11 @@ function GroceryView({ list }: { list: GroceryList }) {
           <Button variant="ghost" size="sm" onClick={resetAll}>
             <RotateCcw size={14} /> Reset
           </Button>
-          <Button variant="secondary" size="sm" disabled>
-            <Printer size={14} /> Print (Phase 2)
-          </Button>
+          <Link href={`/grocery/${list.weekId}/print?auto=1`} target="_blank">
+            <Button variant="secondary" size="sm">
+              <Printer size={14} /> Print
+            </Button>
+          </Link>
         </div>
       </header>
 

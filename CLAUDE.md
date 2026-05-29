@@ -1,11 +1,10 @@
-# Session handoff — 28-05-2026 (AEST)
+# Session handoff — 2 8-05-2026 (AEST)
 
 ## Status
 Phase 1 complete and verified. Onboarding → IndexedDB → dashboard flow works.
 Design language from DESIGN.md applied across all current screens.
 
 ## Next session
-Before starting phase 2 
 Start Phase 2 (print views). Do NOT skip ahead to AI integration.
 Per SPEC.md §7, Phase 2 ports the two reference HTML files into print routes:
 - /plan/[weekId]/print

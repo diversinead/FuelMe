@@ -280,6 +280,7 @@ function DayChip({
   session: DaySession;
   onClick?: () => void;
 }) {
+  const subs = session.sessions ?? [];
   return (
     <motion.button
       variants={staggerItem}
@@ -294,7 +295,15 @@ function DayChip({
       <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
         {session.day}
       </span>
-      <SessionTag type={session.type} />
+      {subs.length === 0 ? (
+        <SessionTag type="rest" />
+      ) : (
+        <div className="flex flex-col items-start gap-1">
+          {subs.map((s) => (
+            <SessionTag key={s.id} type={s.type} customLabel={s.customType} />
+          ))}
+        </div>
+      )}
     </motion.button>
   );
 }

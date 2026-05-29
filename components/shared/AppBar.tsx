@@ -14,6 +14,9 @@ const NAV = [
 export function AppBar() {
   const pathname = usePathname() ?? "";
   const onOnboarding = pathname.startsWith("/onboarding");
+  const onPrint = pathname.endsWith("/print");
+
+  if (onPrint) return null;
 
   return (
     <header
