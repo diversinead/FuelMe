@@ -1,118 +1,145 @@
 # Session handoff — 30-05-2026 (AEST)
 
 ## Status
-Phase 3 (AI plan generation) functionally complete. Onboarding → AI plan →
-plan view with inline meal editing and a Regenerate dialog all work end-to-end
-against the real `/api/plan` route. Targets editor on the plan view lets the
-athlete override carb and protein bands before regenerating.
+Phases 1–5 functionally complete. The full end-to-end loop works against
+the real OpenAI backend:
 
-What's wired:
-- **`/api/plan`** route handler accepting `mode: "fresh" | "adjust"`,
-  optional `baselinePlan`, optional `carbTargetsGperKg` / `proteinTargetGperKg`
-  overrides, optional `previousFeedback`.
-- **`lib/openai.ts`** server-only client factory (`server-only` guard).
-  Model `gpt-4o-mini`, temperature `0.2` (dropped from 0.5 to keep
-  periodisation deterministic).
-- **`lib/prompts.ts`** holds `PLAN_SYSTEM_PROMPT` (now ~2,400 words) +
-  `FEEDBACK_SYSTEM_PROMPT`. GROCERY stub still empty.
-- **Onboarding step 3 submit** posts to `/api/plan` with the current band
-  defaults, saves to Dexie, redirects to `/plan/[weekId]`. Failure shows an
-  inline error with retry / skip-to-dashboard actions.
-- **Plan view targets band** lives in the header strip:
-  - Row 1: `● CARBS  Easy [_]-[_]  Hard [_]-[_]`
-  - Row 2: `● PROTEIN [_]-[_]` (+ Reset link when modified)
-  - Inputs at `w-11`, font `text-[11px]`. GroupLabel locked to `w-[80px]` and
-    SubTarget label slot to `w-[36px]` so protein inputs align under Easy.
-  - Buttons (Print · Regenerate · Grocery) sit on their own right-aligned row
-    below the targets band.
-- **Regenerate dialog** (top-right Regenerate button) sends the band's
-  current carb/protein targets along with the request.
-- **Inline meal-cell editing**: click any meal → centered modal → food /
-  note / macros / isCritical. Saving propagates macros to all other meals
-  with the same `food` string; day totals recompute for every affected day.
+- Onboard → AI generates first plan → land on `/plan/[weekId]`
+- Plan view: 2-band editable carb/protein targets (compact legend + modal),
+  meal-cell editing with macro propagation, Regenerate dialog (current
+  version — see `tasks/RegenerateDialog.md` for the next iteration),
+  smart Grocery button (auto-regenerates the list when it's older than
+  the plan)
+- Grocery view: AI-generated list from `/api/grocery`, no Reset/Regenerate
+  buttons (downstream auto-rebuild), back link points to the plan
+- Check-in (`/checkin/[weekId]`): meal-completion grid with Apply-to-all
+  bulk buttons, energy slider, sessions completed, free notes.
+  "Get AI feedback" → POST `/api/feedback` → renders Wins / Missed /
+  Actions panel below. "Apply suggested edits" patches the FuellingPlan
+  in Dexie.
+- Dashboard "Plan next week" → three-card chooser modal: **Copy last
+  week** (clonePlan helper), **Adjust last week** (`mode: "adjust"` +
+  baselinePlan + previousFeedback — preserves unchanged days verbatim),
+  **Generate fresh**.
 
-Two source-of-truth docs feeding the prompt:
-- **`NUTRITION_RULES.md`** — sports-nutrition logic. Now uses a 6-step
-  periodisation procedure with worksheet-mandated up-front calculation,
-  minimum-variance rule (`W × 3` between lowest and highest carb day), and
-  verification checklists for both carbs and protein.
-- **SPEC.md** — architectural contract (food-string formatting, mode-aware
-  behaviour, output schema). Pointers to NUTRITION_RULES.md replace inline
-  nutrition principles in Appendices A and C.
+All three API routes live and verified:
+- `/api/plan` — 6-step periodisation, 2-band targets (Easy/Hard),
+  variance rule, override-aware. Temperature 0.2.
+- `/api/grocery` — category-aggregated shopping list with macro-check
+  table and item notes. Uses Appendix B logic.
+- `/api/feedback` — coach review producing wins/missed/recommendations
+  + optional suggestedPlanEdits.
 
-## Carb / protein band model
-Per-day-type periodisation collapsed to **2 bands** in the UI:
-- **Easy band** — REST, easy, easy_double, cross-training. Default 5-7 g/kg.
-- **Hard band** — tempo, intervals, threshold, long (90+ min), race. Default
-  8-10 g/kg.
-- **Protein** — single daily range (default 1.6-1.8 g/kg). Stays stable across
-  all days; explicitly not periodised.
+**Working tree at handoff:** Phase 5 changes (`app/api/feedback/route.ts`,
+edits to `app/checkin/[weekId]/page.tsx` and `app/dashboard/page.tsx`)
+are uncommitted on `main`. Most recent commit is
+`e4e6368 Refresh DESIGN.md to match the built state`.
 
-Smoke tests at temperature 0.2 produce clean band-uniform totals (e.g. every
-Easy day = 350 g, every Hard day = 520 g for a 58 kg athlete on defaults),
-protein flat at ~100 g across the week, variance ≥ W × 3.
+Source-of-truth docs are current as of 30-05-2026:
+- **SPEC.md** — architectural contract; Appendices A–C point to
+  NUTRITION_RULES.md for nutrition logic, keep the formatting / mode /
+  schema rules locally
+- **NUTRITION_RULES.md** — sports-nutrition logic (6-step periodisation,
+  protein dosing, female-athlete + dietary overlays, hard constraints)
+- **DESIGN.md** — visual language; refreshed to match the built state
+  (Targets band, Modal pattern, screen-level details for plan /
+  dashboard chooser / grocery / check-in, Tailwind opacity-on-CSS-vars
+  gotcha)
 
-## Next session
-Polish + Phase 4 (grocery generation, per SPEC §7 step 14).
+## Codebase orientation (for a fresh agent)
 
-Plan-view polish queued:
-- Rules content quality — currently the AI returns somewhat generic strings
-  ("Prioritise carbs around hard sessions"). Rewrite the prompt's `rules` slot
-  guidance with worked examples of week-specific rules to push for sharper
-  output. Display already constrained to exactly 3 rules.
-- Bidirectional propagation between `foodPreferences` and meal edits is not
-  yet wired — only meal-to-meal propagation via exact food-string match
-  exists. Per the user's call, no plan to promote `foodPreferences` to a
-  macro-carrying data model.
-- Re-review the 6-step prompt: produces good band-uniform output but model
-  occasionally drifts back to "moderate" / category-style tags. Possible
-  refactor: tighten schema-mapping section, add an anti-pattern block.
+- Next.js 14 App Router · TypeScript strict · React 18 · Tailwind ·
+  Dexie.js (IndexedDB) for client persistence · Framer Motion · OpenAI
+  `gpt-4o-mini` @ temperature 0.2.
+- `lib/db.ts` — all Dexie schemas + `clonePlan` helper.
+- `lib/openai.ts` — `server-only` client; `OPENAI_MODEL`, `OPENAI_TEMPERATURE`.
+- `lib/prompts.ts` — `PLAN_SYSTEM_PROMPT`, `GROCERY_SYSTEM_PROMPT`,
+  `FEEDBACK_SYSTEM_PROMPT`. Derived from NUTRITION_RULES.md + SPEC.md;
+  edits flow source → code, never the reverse.
+- `lib/defaults.ts` — 2-band carb defaults, `SESSION_TYPE_BAND` map.
+- `app/api/{plan,grocery,feedback}/route.ts` — POST handlers, all hit
+  OpenAI with `response_format: { type: "json_object" }`.
+- `app/{plan,grocery,checkin}/[weekId]/page.tsx` — week-scoped views.
+- `app/dashboard/page.tsx` — landing + plan-next-week chooser.
+- `components/ui/*` — hand-built primitives (no shadcn generator).
+- `tasks/*.md` — ephemeral task briefs. Delete after the user verifies.
 
-Phase 4 — Grocery generation (SPEC.md §7 step 14):
-- Build `lib/prompts.ts` `GROCERY_SYSTEM_PROMPT` from SPEC Appendix B
-  (which itself should be re-pointed to NUTRITION_RULES.md after the same
-  pattern as Appendix A / C).
-- Build `/api/grocery` route handler.
-- Wire the grocery view's currently-stubbed "Generate" action to POST.
+Tailwind gotcha worth re-reading in DESIGN.md §11: the `/opacity`
+modifier silently drops on hex-string CSS-var colours. Use
+`color-mix(in srgb, var(--token) N%, transparent)` inline instead.
 
-After Phase 4 → Phase 4.5 (Copy & edit flow with the §4.7 three-path chooser)
-→ Phase 5 (check-in loop + real `mode: "adjust"` AI behaviour).
+## Pending updates
 
-**Source-of-truth rule (reaffirmed):** `lib/prompts.ts` derives from
-NUTRITION_RULES.md for nutrition logic and SPEC.md for architectural contract.
-Edit either source first, then sync the constants. Never edit the prompt in
-isolation.
+Each item below is queued. Work through one at a time, top-down. After
+the user confirms an item works, delete its bullet from this list.
 
-## Known issues / deferred
-- The Regenerate dialog has three radio reasons (training / prefs / retry)
-  but they're mostly scaffolding — every regenerate currently goes out as
-  `mode: "fresh"`. Proper differentiation lands in Phase 4.5 (`mode: "adjust"`
-  via the §4.7 dashboard chooser) and Phase 5 (AI-side adjust logic).
-- `PlannedMeal.note` and `PlannedMeal.isCritical` are stored but not rendered
-  in the cell. Notes will surface in a future tap/hover affordance.
-- "Reset" link only resets the in-component target state; targets aren't
-  persisted to Dexie or Profile. Each page reload starts from band defaults.
-- Mock data and the "Seed mock plan" empty-state button are kept but should be
-  removed once we're confident AI generation is reliable enough for the demo
-  paths.
+- **Bug:** Grocery list generation fails with "Request timed out."
+- **Bug:** regenerated plan produces generic dinners like "Rice,
+  vegetables, protein" every day, even though the profile has specific
+  protein sources (chicken, beef, etc.) in food preferences.
+- **UI tweak:** change the "RACE" session pill colour to gold/amber so
+  it's visually distinct from HARD sessions.
+- **Bug:** the distance input field in the training entry form caps at
+  10 on some entries when using the up-arrow spinner.
+- **Feature:** Read `tasks/RegenerateDialog.md`. Implement as specified.
+  Delete the task file when done and verified.
+- **UX:** the session-type field in the training entry form defaults
+  to "Easy". Make it unfilled by default — pre-filling is misleading
+  because users may submit incorrect data and it implies "Easy" is the
+  system's recommendation rather than the field being blank.
 
-## Known cosmetic issues to address before Phase 4
-- none
+Rule: do NOT spend more than 2 attempts per issue. If an issue isn't
+resolved in 2 tries, rebuild the affected component from scratch using
+the existing primitives in `components/ui/*` rather than patching
+further.
 
-Do NOT spend more than 2 attempts per issue. If an issue isn't resolved in
-2 tries, rebuild the affected component from scratch using the existing
-primitives in `components/ui/*` rather than patching further.
+## Known issues / deferred (don't fix unless asked)
+
+- `PlannedMeal.note` and `PlannedMeal.isCritical` are stored but not
+  rendered in the cell — notes will surface in a future tap/hover
+  affordance; isCritical is currently dormant.
+- Targets band state is in-memory only; each page load resets to
+  defaults. Could persist to Profile or FuellingPlan if athletes want
+  their custom bands sticky.
+- Plan view empty state still shows "Seed mock plan" for dev
+  convenience. Remove before shipping.
+- Adjust mode hasn't been heavily tested end-to-end. The prompt rules
+  are there but verification of "preserve unchanged days verbatim"
+  behaviour in production weeks is still needed.
+- Manual meal edits don't bump the plan's `generatedAt`; the smart
+  Grocery freshness check only triggers regenerate after a `/api/plan`
+  call. Flag if users complain.
+
+## Next phase (after the pending-updates list is empty)
+
+Phase 6 — Polish (SPEC.md §7):
+- `next-pwa`, manifest, icons (Add to Home Screen, offline shell)
+- Empty / loading / error states across the app
+- Mobile QA — print views are landscape A4; the on-screen plan view's
+  day-by-day tabbed mobile layout needs a swipe option too
+- Onboarding empty-state copy
+- Strip the dev-only "Seed mock plan" empty-state button from the plan
+  view once we're confident AI generation is reliable for first-time
+  users
+- Sharpen the prompt's `rules` slot (only relevant if RegenerateDialog
+  doesn't replace it — see `tasks/RegenerateDialog.md`)
+- Mobile QA for the Targets band — likely needs to collapse or move on
+  narrow viewports
 
 # Working agreement
 
 - Follow SPEC.md as the architectural source of truth.
-- Follow NUTRITION_RULES.md as the nutrition source of truth. Prompts are
-  derived; edits flow source → code, never the reverse.
-- Work in phases. Don't start the next phase until I confirm the current one
-  works.
-- Auto-accept edits and routine bash commands. Only pause for real decisions
-  or errors.
-- When a phase is done, give me a short summary + a verification checklist.
-- Don't invent dependencies — check `package.json` before importing anything.
+- Follow NUTRITION_RULES.md as the nutrition source of truth. Prompts
+  in `lib/prompts.ts` are derived; edits flow source → code, never the
+  reverse.
+- Follow DESIGN.md as the visual source of truth.
+- Work in phases. Don't start the next phase until I confirm the
+  current one works.
+- Auto-accept edits and routine bash commands. Only pause for real
+  decisions or errors.
+- When a phase is done, give me a short summary + a verification
+  checklist.
+- Don't invent dependencies — check `package.json` before importing
+  anything.
 - TypeScript strict mode. No `any` unless I approve it.
-- Keep my updates concise — one question at a time, less commentary.
+- Keep updates concise — one question at a time, less commentary.
