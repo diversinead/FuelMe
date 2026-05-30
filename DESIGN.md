@@ -250,11 +250,30 @@ Headings use `font-display`. Body uses `font-body`. All numbers, badges, time st
 - `<MacroPill kind="carbs|protein" value={n} />` is still exported for any future "show units" context, but the plan grid renders bare numbers directly inline.
 
 ### Session pills (plan-grid day header)
-- Used only in the plan-grid day-header row to indicate the day's session intensity (mapped from `DayTotal.tag`)
-- Three variants — neutral (easy / easy+ / rest), hard (intervals / threshold / tempo / race), long
+- Used only in the plan-grid day-header row to indicate the day's session intensity
+- Variant + label are **derived from the day's `TrainingWeek.sessions[].type`** (via `pillVariantForType` + `SESSION_LABELS`), not from `DayTotal.tag`. This means the header shows the specific session name ("Intervals", "Long Run", "Threshold") rather than the broad bucket — and a single-session day with `customType` set shows that custom label.
+- Three colour variants — neutral (rest / easy / easy_double / cross), hard (intervals / threshold / tempo / race), long (long)
 - Each uses paired `--session-pill-{variant}-bg` and `--session-pill-{variant}-fg` tokens
 - `font-mono`, 10px, uppercase, letter-spacing 0.08em, padding `1px 6px`, radius `3px`
 - Distinct from `SessionTag` (used in the dashboard hero day-chip column + training editor for per-sub-session colour-coding)
+
+### Targets band (plan-view header)
+- Compact legend showing the athlete's current carb + protein targets — replaces the static decorative legend
+- Layout: `● Carbs 245–490 g  · ● Protein 78–88 g/day  · [Edit targets]` — coloured dot + label + computed gram range, followed by an accent-teal "Edit targets" mono-uppercase link
+- Computed gram range = `Math.round(easyCarbLow × W)`–`Math.round(hardCarbHigh × W)` (lowest of Easy to highest of Hard band); protein uses min/max × W
+- Numbers update live as the modal is edited; "Reset to defaults" link appears inside the modal when targets differ from `DEFAULT_CARB_TARGETS_G_PER_KG` / `DEFAULT_PROTEIN_TARGET_G_PER_KG`
+- The actual editor lives in a modal (see "Modal" pattern below). Targets state is in-memory only — each page load resets to the rules-table defaults. They flow into `/api/plan` calls as `carbTargetsGperKg` / `proteinTargetGperKg`.
+
+### Modal (shared pattern across edit / regenerate / chooser)
+Used by: meal-cell editor, regenerate dialog, edit-targets modal, plan-next-week chooser. Identical visual structure:
+- Fixed-position overlay (`z-50`, full-screen flex centre)
+- Backdrop: `bg-black/60`, click to close (disabled while a save/network action is in flight)
+- Card: `max-w-md` (or `max-w-lg` for content-heavy dialogs), `bg-surface-1`, `border-border`, `rounded-card`, `p-6`, `shadow-elevated`
+- Enter: fade + scale from 0.96 + translateY 8 (Framer Motion, 180ms ease-out)
+- Exit: fade + scale to 0.97 + translateY 4 (150ms)
+- Header: title (`font-display text-display-sm`) on the left, optional subtitle in `text-body-sm text-ink-secondary`, close `<X>` button (16px) top-right that hides while busy
+- Esc closes (single shared listener at page level, dispatched to the open modal)
+- Cancel + primary action at the bottom, right-aligned
 
 ### Navigation
 - Top app bar: `--surface-0` background, `--border-subtle` bottom border, `64px` tall, sticky
@@ -356,28 +375,38 @@ export const ease = {
 - **Quick stats row** below the hero: 3 cards in a row — "Sessions this week", "Plan completion %", "Energy" (from check-ins). Each shows a big monospace number and a tiny label below. Show "—" when no check-in exists yet.
 - **Right column (1/3 width):** stacked smaller cards — "Last week's wins" (top 1–2 bullets from AI feedback with empty-state fallback), "Up next" CTA card that flips between "Do this week's check-in" and "Plan next week" based on check-in status.
 - **History feed at the bottom:** vertical list of past weeks with status pills and dates.
+- **"Plan next week" chooser** (when the current week has been checked in): clicking the CTA opens a Modal with three radio cards — **Copy last week** (default if a current-week plan exists), **Adjust last week** (disabled with "Coming in Phase 5" caption), **Generate fresh**. Confirm dispatches to `clonePlan()` or `/api/plan`, then routes to `/plan/[nextWeekId]`. See SPEC §4.7.
 
 ### Plan editor (on-screen)
 See **SPEC §4.3** for the full layout. Visual notes:
-- **Top utility row:** "← Dashboard" back-link left, action buttons right (Print · Regenerate · Grocery).
-- **Header strip:** tiny `WEEK OF MON 2 JUN` mono tertiary label + `Fuelling plan` 20px title (weight 500, ink). Right side: macro legend with two 8px coloured dots (`--macro-carbs`, `--macro-protein`) and target ranges.
+- **Top utility row:** "← Dashboard" back-link, no actions.
+- **Header strip:** tiny `WEEK OF MON 2 JUN` mono tertiary label + `Fuelling plan` 20px title (weight 500, ink) on the left. Right: **Targets band** (`● Carbs X–Y g · ● Protein X–Y g/day · Edit targets`) — see "Targets band" component pattern in §4.
+- **Action button row** beneath the header strip, right-aligned, bordered below: `Print` (ghost) · `Regenerate` (primary teal) · `Grocery` (primary teal). Compact size — `h-7 px-2.5 text-mono-sm gap-1.5` with 12px icons.
+- **Grocery button is smart:** if a list exists for this week and is newer than the plan's `generatedAt`, just navigates. Otherwise generates first (single click from the plan → populated grocery list).
 - **Plan grid:** see "Plan grid" component pattern in §4.
-- **Mobile (default <768px):** day-by-day, swipeable / tabbed. 7 day-buttons across the top, tapping selects. Below, 5 stacked `MealCard`s for the selected day, then a `DayTotalRow`. Each `MealCard`: slot label tiny mono tertiary, food at 15px ink, coloured macro numbers right-aligned.
-- **Edit interaction (Phase 3+):** tap any meal → bottom sheet on mobile, popover on desktop. Same form fields either way: food, note, macros, isCritical.
-- **What is *not* rendered in the cell (but lives in the data model):** `meal.note` (reserved for popover surfacing later), `meal.isCritical` (no left-accent border for now).
+- **Mobile (default <768px):** day-by-day, tabbed (not swipeable — 7 day-buttons across the top, tap to select). Below: 5 stacked `MealCard`s for the selected day, then a `DayTotalRow`. Each `MealCard`: slot label tiny mono tertiary, food at 15px ink, coloured macro numbers right-aligned.
+- **Edit interaction:** tap any meal cell (desktop or mobile) → centered Modal opens with food / note / macros (carbs + protein g) / isCritical fields. Modal shows day + slot in mono header (e.g. `MON · BREAKFAST`).
+- **Macro propagation on save:** when the meal save commits, any other meal in the plan with the exact same `food` string also receives the new `carbsG` / `proteinG`. Day totals recompute for every affected day. Notes and `isCritical` stay per-meal — they're context-dependent. The modal surfaces a one-line preview ("These macros will also apply to N other meals with 'X'") when N > 0.
+- **Regenerate dialog:** the top-row Regenerate button opens a Modal with three radio options (Training has changed / Food preferences have changed / Nothing — try a different plan) and a free-text "Anything else for the AI" textarea. Confirm POSTs `/api/plan` with `mode: "fresh"` plus the current targets band values + the free-text as `previousFeedback`.
+- **What is *not* rendered in the cell (but lives in the data model):** `meal.note` (reserved for a future tap/hover popover) and `meal.isCritical` (no left-accent border on the cell for now).
 
 ### Grocery list (on-screen)
+- **Empty state:** "Generate grocery list" primary button. Generates from the week's plan + food prefs via `/api/grocery` (defaults `includeDinner: true`), saves to Dexie, refreshes into the populated view.
+- **Header:** title + week range + "X of Y" item count + thin `--accent` progress bar. Only one action button — Print (ghost).
 - **Mobile-first.** Single column, sticky category headers (`--surface-2` background, `font-mono` uppercase).
-- Items as full-width rows: checkbox left, item name `font-body`, quantity right-aligned in `font-mono` and `--accent` colour.
+- Items as full-width rows: checkbox left, item name `font-body`, quantity right-aligned in `font-mono` and `--accent` colour, optional italic tertiary note below.
 - Checking an item: row fades to 40% opacity + item name gets strikethrough, plays a tiny spring scale animation on the checkbox.
-- Progress bar at top: "12 of 28" with thin `--accent` fill bar.
+- **Back link** points to `/plan/[weekId]` (not the dashboard) — the grocery list is downstream of the plan.
+- **No "Reset" or "Regenerate" buttons.** Regeneration happens automatically when the user clicks Grocery on the plan view and the existing list is older than the plan.
 
 ### Check-in
-- **Compact recap section** at top: collapsible accordion showing the plan.
-- **Meal grid:** 5 rows (slots) × 7 cols (days), each cell is a 4-state segmented control (done · partial · missed · swapped). On mobile, switch to per-day swipeable view matching the plan editor.
-- **Energy rating:** custom slider with 1-5 ticks. Selected value displayed huge in `font-display` next to the slider.
-- **Submit button** spans full width on mobile.
-- **AI feedback section:** appears below after submit. Three labeled columns ("WINS / MISSED / ACTIONS") with monospace labels. Each bullet animates in with staggered fade.
+- **Compact recap section** at top: collapsible accordion showing the plan (deferred — not built yet).
+- **Apply-to-all row** above the meal grid: section heading on the left, four status buttons (`Done` / `Partial` / `Missed` / `Swapped`) + `Clear` on the right. Tapping a status sets all 35 cells at once; tweak individual cells afterwards.
+- **Meal grid:** 5 rows (slots) × 7 cols (days), each cell is a 4-state segmented control. Buttons show single letters `D / P / M / S` with full label in `title`. Selected state uses inline `color-mix()` styling on `--session-easy` / `--warning` / `--session-hard` / `--session-long` respectively — **not** Tailwind `/opacity` modifiers (those silently drop against hex CSS vars; see §11).
+- **Energy rating:** big mono numeric `1–5` next to a row of 5 stacked pill segments (`--accent` filled up to the selected rating). Labels `flat` / `flying` underneath.
+- **Sessions completed:** `NumberInput` with chevron steppers.
+- **Submit button** spans full width on mobile. "Get AI feedback (Phase 5)" button sits adjacent — disabled until the feedback route lands.
+- **AI feedback section:** appears below after submit (Phase 5). Three labeled columns ("WINS / MISSED / ACTIONS") with monospace labels. Each bullet animates in with staggered fade.
 
 ---
 
@@ -470,23 +499,53 @@ Explicit avoid list — Claude Code should not produce these:
 - Emojis as primary UI elements
 - Multiple competing accent colours
 
+**Tailwind gotchas to avoid:**
+- **Do not use the `/opacity` suffix on colour utilities whose underlying token is a hex-string CSS variable** (e.g. `bg-session-easy/20`, `border-danger/30`, `bg-surface-3/60`). Tailwind 3 computes opacity by injecting RGB channels into `rgb(var(--token) / <alpha>)`, which only works when the variable provides a `r g b` triplet — not a hex string. The classes parse without error but render with no colour. Use `color-mix(in srgb, var(--token) N%, transparent)` via inline `style` for tinted backgrounds, or define a dedicated `--token-muted` variable with the alpha baked in.
+
 ---
 
 ## 12. Verification checklist
 
 After Claude Code applies this, the app should pass these visual tests:
+
+**Foundation:**
 - [ ] Dark mode loads by default; toggle in top-right switches to light mode and persists across refresh
 - [ ] Body has subtle noise grain visible in dark mode (look closely at large empty areas)
 - [ ] Dashboard "This Week" card has the radial gradient wash from top-right
 - [ ] All numbers (dates, durations, macros, quantities) appear in JetBrains Mono
 - [ ] Headings appear in Manrope (more geometric/condensed than default Inter)
 - [ ] Primary buttons are accent-teal, never blue or orange
-- [ ] Session tags use the three coloured pill style on both light and dark
 - [ ] Cards have visible but subtle borders, not heavy shadcn defaults
 - [ ] Page transitions fade + slide, not instant snap
 - [ ] Focus states show the teal ring, not browser default
-- [ ] Print routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`) render on white paper with Manrope + JetBrains Mono, hairline borders, light-tinted session pills, amber/green macro numbers — same minimal language as the in-app view
 - [ ] No reference to Fraunces in `app/layout.tsx` `<link>` or anywhere in `globals.css` (the `/reference/*.html` files retain it only as historical artefacts)
-- [ ] Macro numbers in the plan grid render as bare coloured digits (no `C`/`P` letters, no `g` units, no chip background)
+
+**Plan view:**
+- [ ] Header strip: title left, targets legend right (`● Carbs … · ● Protein … · Edit targets`)
+- [ ] Day-header pills read the **specific session label** ("Intervals", "Long Run", custom labels) — not the broad bucket
+- [ ] Macro numbers in cells render as bare coloured digits (no `C`/`P` letters, no `g` units, no chip background)
+- [ ] Critical meal indicator (`isCritical` left-accent border) is currently NOT rendered (data only)
+- [ ] Note field is currently NOT rendered in the cell (data only)
+- [ ] Clicking a meal opens the centered edit Modal with food / note / macros / isCritical fields
+- [ ] Saving a meal edit propagates the new macros to every other meal in the plan with the exact same `food` string; affected day totals recompute
+- [ ] Editing targets opens a centered Modal; "Reset to defaults" link appears only when values differ from `DEFAULT_*` constants
+- [ ] Regenerate opens a Modal with three radio reasons + optional note textarea; submit POSTs `/api/plan` with the current targets band
+
+**Dashboard:**
+- [ ] "Plan next week" CTA (only when current week is checked in) opens the three-card chooser Modal
+- [ ] "Copy last week" is the default selection when a current-week plan exists; "Generate fresh" otherwise
+- [ ] "Adjust last week" is visibly disabled with "Coming in Phase 5"
+
+**Grocery list:**
+- [ ] Empty state has a single "Generate grocery list" primary button (no dev "Seed mock list")
+- [ ] Populated header has only Print (no Reset, no Regenerate)
+- [ ] Back link reads "← Fuelling plan" and points to `/plan/[weekId]`
+
+**Check-in:**
+- [ ] Apply-to-all row above the grid: section heading + 4 status buttons + Clear
+- [ ] Selecting D / P / M / S in a cell renders a visibly tinted background using the matching status colour (via inline `color-mix()` — see §11 gotcha)
+
+**Print routes:**
+- [ ] `/plan/[weekId]/print` and `/grocery/[weekId]/print` render on white paper with Manrope + JetBrains Mono, hairline borders, light-tinted session pills, amber/green macro numbers — same minimal language as the in-app view
 
 If any of these fail, fix before declaring this addendum complete.
