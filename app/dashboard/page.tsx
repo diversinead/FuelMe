@@ -103,6 +103,74 @@ export default function DashboardPage() {
         return;
       }
 
+      if (chooserPath === "adjust") {
+        if (!currentWeekPlan) {
+          throw new Error(
+            "No plan to adjust from. Choose Generate fresh instead.",
+          );
+        }
+
+        // Clone the training as a scaffold for next week, then POST /api/plan
+        // with mode: "adjust" + baselinePlan. The model preserves unchanged
+        // days verbatim and only modifies meals affected by the training diff
+        // or previousFeedback.
+        await clonePlan(currentWeekId, nextWid);
+
+        const db = getDb();
+        const [profile, foodPrefs, trainingWeek] = await Promise.all([
+          db.profile.get("me"),
+          db.foodPreferences.get("me"),
+          db.trainingWeeks.get(nextWid),
+        ]);
+
+        if (!profile || !foodPrefs) {
+          throw new Error(
+            "Missing profile or food preferences. Re-run onboarding first.",
+          );
+        }
+        if (!trainingWeek) {
+          throw new Error("No training week available to adjust from.");
+        }
+
+        const response = await fetch("/api/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "adjust",
+            profile,
+            foodPreferences: foodPrefs,
+            trainingWeek,
+            baselinePlan: currentWeekPlan,
+            previousFeedback:
+              data?.lastCheckIn?.aiFeedback?.recommendations?.join("\n") ||
+              undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(
+            (errBody as { error?: string }).error ??
+              `Plan adjustment failed (HTTP ${response.status}).`,
+          );
+        }
+
+        const apiPlan = (await response.json()) as Omit<
+          FuellingPlan,
+          "id" | "weekId" | "generatedAt"
+        >;
+        await db.fuellingPlans.put({
+          ...apiPlan,
+          id: nextWid,
+          weekId: nextWid,
+          generatedAt: new Date().toISOString(),
+          manuallyEdited: false,
+        });
+
+        router.push(`/plan/${nextWid}`);
+        return;
+      }
+
       if (chooserPath === "fresh") {
         // Clone this week's training as a scaffold for next week (athlete
         // can edit in Settings if it should differ), then generate fresh.
@@ -164,8 +232,8 @@ export default function DashboardPage() {
         return;
       }
 
-      // chooserPath === "adjust" — disabled in Phase 4.5
-      throw new Error("Adjust last week lands in Phase 5.");
+      // Unreachable — all three chooserPath values handled above.
+      throw new Error("Unknown chooser path.");
     } catch (e) {
       setChooserError(
         e instanceof Error ? e.message : "Something went wrong.",
@@ -450,9 +518,11 @@ export default function DashboardPage() {
                     {
                       value: "adjust",
                       title: "Adjust last week",
-                      hint: "Carry forward last week's plan, then adjust meals on days whose training changes.",
-                      disabled: true,
-                      disabledReason: "Coming in Phase 5.",
+                      hint: "Carry forward last week's plan; the AI modifies only meals on days whose training changes or that feedback flagged.",
+                      disabled: !canCopy,
+                      disabledReason: canCopy
+                        ? undefined
+                        : "No plan to adjust from — generate one for this week first.",
                     },
                     {
                       value: "fresh",

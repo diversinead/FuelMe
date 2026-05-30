@@ -7,10 +7,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft } from "lucide-react";
 import {
   getDb,
+  type AIFeedback,
   type CheckIn,
   type CompletionStatus,
   type Day,
+  type FuellingPlan,
   type MealSlot,
+  type PlannedMeal,
 } from "@/lib/db";
 import { formatWeekRange } from "@/lib/date";
 import { Button } from "@/components/ui/button";
@@ -79,6 +82,11 @@ export default function CheckInPage({
   const [sessionsCompleted, setSessionsCompleted] = React.useState(0);
   const [freeNotes, setFreeNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [feedbackLoading, setFeedbackLoading] = React.useState(false);
+  const [feedbackError, setFeedbackError] = React.useState<string | null>(null);
+  const [applying, setApplying] = React.useState(false);
+  const [applyError, setApplyError] = React.useState<string | null>(null);
+  const [applied, setApplied] = React.useState(false);
 
   React.useEffect(() => {
     if (existing) {
@@ -95,24 +103,141 @@ export default function CheckInPage({
 
   if (plan === undefined || existing === undefined) return <Loading />;
 
+  function buildCheckInPayload(preserveFeedback: boolean): CheckIn {
+    return {
+      id: weekId,
+      weekId,
+      submittedAt: existing?.submittedAt ?? new Date().toISOString(),
+      mealCompletions: Object.entries(completions).map(([k, status]) => {
+        const [day, slot] = k.split(":");
+        return { day, slot, status };
+      }),
+      energyRating: energy,
+      sessionsCompleted,
+      freeNotes: freeNotes || undefined,
+      aiFeedback: preserveFeedback ? existing?.aiFeedback : undefined,
+    };
+  }
+
   async function submit() {
     setSubmitting(true);
     try {
-      const checkIn: CheckIn = {
-        id: weekId,
-        weekId,
-        submittedAt: new Date().toISOString(),
-        mealCompletions: Object.entries(completions).map(([k, status]) => {
-          const [day, slot] = k.split(":");
-          return { day, slot, status };
-        }),
-        energyRating: energy,
-        sessionsCompleted,
-        freeNotes: freeNotes || undefined,
-      };
+      // Preserve existing aiFeedback across plain saves — users can refresh
+      // it explicitly via "Get AI feedback".
+      const checkIn = buildCheckInPayload(true);
+      checkIn.submittedAt = new Date().toISOString();
       await getDb().checkIns.put(checkIn);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function getFeedback() {
+    setFeedbackLoading(true);
+    setFeedbackError(null);
+    try {
+      if (!plan) {
+        throw new Error("No fuelling plan saved for this week.");
+      }
+      const db = getDb();
+      const profile = await db.profile.get("me");
+      if (!profile) {
+        throw new Error("Missing profile. Re-run onboarding.");
+      }
+
+      // Save the current check-in state first so the API call sees the
+      // freshest snapshot the athlete just keyed in.
+      const checkInPayload = buildCheckInPayload(false);
+      checkInPayload.submittedAt = new Date().toISOString();
+      await db.checkIns.put(checkInPayload);
+
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fuellingPlan: plan,
+          checkIn: checkInPayload,
+          profile,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          (errBody as { error?: string }).error ??
+            `Feedback generation failed (HTTP ${response.status}).`,
+        );
+      }
+
+      const apiFeedback = (await response.json()) as Omit<
+        AIFeedback,
+        "generatedAt"
+      >;
+      const aiFeedback: AIFeedback = {
+        ...apiFeedback,
+        generatedAt: new Date().toISOString(),
+      };
+      await db.checkIns.put({ ...checkInPayload, aiFeedback });
+    } catch (e) {
+      setFeedbackError(
+        e instanceof Error ? e.message : "Feedback generation failed.",
+      );
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }
+
+  async function applySuggestedEdits() {
+    if (!plan || !existing?.aiFeedback?.suggestedPlanEdits?.length) return;
+    setApplying(true);
+    setApplyError(null);
+    setApplied(false);
+    try {
+      const edits = existing.aiFeedback.suggestedPlanEdits;
+      // Merge each suggested edit into the matching meal by (day, slot).
+      const meals: PlannedMeal[] = plan.meals.map((m) => {
+        const patch = edits.find(
+          (e) => e.day === m.day && e.slot === m.slot,
+        );
+        if (!patch) return m;
+        return {
+          ...m,
+          food: patch.food ?? m.food,
+          note: patch.note ?? m.note,
+          carbsG: patch.carbsG ?? m.carbsG,
+          proteinG: patch.proteinG ?? m.proteinG,
+          isCritical:
+            patch.isCritical !== undefined ? patch.isCritical : m.isCritical,
+        };
+      });
+
+      // Recompute day totals for every day touched by an edit.
+      const affectedDays = new Set<Day>(edits.map((e) => e.day));
+      const dayTotals = plan.dayTotals.map((t) => {
+        if (!affectedDays.has(t.day)) return t;
+        const dayCarbs = meals
+          .filter((m) => m.day === t.day)
+          .reduce((s, m) => s + (m.carbsG ?? 0), 0);
+        const dayProtein = meals
+          .filter((m) => m.day === t.day)
+          .reduce((s, m) => s + (m.proteinG ?? 0), 0);
+        return { ...t, carbsG: dayCarbs, proteinG: dayProtein };
+      });
+
+      const next: FuellingPlan = {
+        ...plan,
+        meals,
+        dayTotals,
+        manuallyEdited: true,
+      };
+      await getDb().fuellingPlans.put(next);
+      setApplied(true);
+    } catch (e) {
+      setApplyError(
+        e instanceof Error ? e.message : "Couldn't apply the edits.",
+      );
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -317,8 +442,17 @@ export default function CheckInPage({
               ? "Update check-in"
               : "Save check-in"}
         </Button>
-        <Button variant="secondary" disabled>
-          Get AI feedback (Phase 5)
+        <Button
+          variant="secondary"
+          onClick={getFeedback}
+          disabled={feedbackLoading || !plan}
+          title={!plan ? "Generate a plan for this week first" : undefined}
+        >
+          {feedbackLoading
+            ? "Generating…"
+            : existing?.aiFeedback
+              ? "Refresh AI feedback"
+              : "Get AI feedback"}
         </Button>
         {existing && (
           <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary ml-auto">
@@ -326,7 +460,185 @@ export default function CheckInPage({
           </span>
         )}
       </div>
+
+      {feedbackError && (
+        <div
+          className="mt-6 p-3 rounded-button"
+          style={{
+            border:
+              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
+            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+          }}
+        >
+          <p className="text-body-sm text-danger leading-snug">
+            {feedbackError}
+          </p>
+        </div>
+      )}
+
+      {existing?.aiFeedback && (
+        <FeedbackPanel
+          feedback={existing.aiFeedback}
+          canApply={
+            !!plan && !!existing.aiFeedback.suggestedPlanEdits?.length
+          }
+          applying={applying}
+          applied={applied}
+          applyError={applyError}
+          onApply={applySuggestedEdits}
+        />
+      )}
     </motion.main>
+  );
+}
+
+function FeedbackPanel({
+  feedback,
+  canApply,
+  applying,
+  applied,
+  applyError,
+  onApply,
+}: {
+  feedback: AIFeedback;
+  canApply: boolean;
+  applying: boolean;
+  applied: boolean;
+  applyError: string | null;
+  onApply: () => void;
+}) {
+  return (
+    <section className="mt-10">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-4">
+        <h2 className="font-display text-display-sm text-ink">
+          AI feedback
+        </h2>
+        <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+          {new Date(feedback.generatedAt).toLocaleString()}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <FeedbackColumn
+          label="Wins"
+          color="var(--session-easy)"
+          items={feedback.wins}
+        />
+        <FeedbackColumn
+          label="Missed"
+          color="var(--session-hard)"
+          items={feedback.missed}
+        />
+        <FeedbackColumn
+          label="Actions"
+          color="var(--accent)"
+          items={feedback.recommendations}
+        />
+      </div>
+
+      {feedback.suggestedPlanEdits &&
+        feedback.suggestedPlanEdits.length > 0 && (
+          <div className="mt-6">
+            <Card>
+              <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+                <div>
+                  <CardLabel>Suggested plan edits</CardLabel>
+                  <p className="text-body-sm text-ink-secondary mt-1">
+                    The coach has flagged {feedback.suggestedPlanEdits.length}{" "}
+                    meal slot{feedback.suggestedPlanEdits.length === 1 ? "" : "s"}
+                    {" "}that would have worked better. Apply to overwrite those
+                    cells in this week's plan.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={onApply}
+                  disabled={!canApply || applying}
+                >
+                  {applying
+                    ? "Applying…"
+                    : applied
+                      ? "Applied ✓"
+                      : "Apply suggested edits"}
+                </Button>
+              </div>
+              <ul className="space-y-2">
+                {feedback.suggestedPlanEdits.map((e, i) => (
+                  <li
+                    key={`${e.day}:${e.slot}:${i}`}
+                    className="flex flex-wrap gap-2 items-baseline text-body-sm"
+                  >
+                    <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary w-24 shrink-0">
+                      {e.day} · {e.slot}
+                    </span>
+                    <span className="text-ink">{e.food}</span>
+                    <span className="font-mono text-[11px] text-ink-tertiary tabular-nums">
+                      C {e.carbsG} · P {e.proteinG}
+                    </span>
+                    {e.note && (
+                      <span className="text-body-sm italic text-ink-tertiary">
+                        — {e.note}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {applyError && (
+                <p className="mt-3 text-body-sm text-danger leading-snug">
+                  {applyError}
+                </p>
+              )}
+            </Card>
+          </div>
+        )}
+    </section>
+  );
+}
+
+function FeedbackColumn({
+  label,
+  color,
+  items,
+}: {
+  label: string;
+  color: string;
+  items: string[];
+}) {
+  return (
+    <Card>
+      <div className="inline-flex items-center gap-2 mb-3">
+        <span
+          aria-hidden
+          className="inline-block w-2 h-2 rounded-full"
+          style={{ background: color }}
+        />
+        <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
+          {label}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-body-sm text-ink-tertiary italic leading-snug">
+          Nothing flagged here.
+        </p>
+      ) : (
+        <ul className="space-y-2.5">
+          {items.map((it, i) => (
+            <li
+              key={i}
+              className="flex gap-2 text-body-sm text-ink leading-snug"
+            >
+              <span
+                className="font-mono text-mono-sm pt-0.5 shrink-0"
+                style={{ color }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span>{it}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
