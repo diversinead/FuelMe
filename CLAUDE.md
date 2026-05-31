@@ -1,68 +1,73 @@
-# Session handoff — 30-05-2026 (AEST)
+# Session handoff — 31-05-2026 (AEST)
 
 ## Status
-Phases 1–5 functionally complete. The full end-to-end loop works against
-the real OpenAI backend:
+Phases 1–7 complete and pushed to `origin/main` (HEAD `e199e7f`). The
+post-Phase-5 pending-updates queue (#1–#6) is cleared, and the Phase 7
+admin page is live. The full end-to-end loop runs against the real OpenAI
+backend.
 
 - Onboard → AI generates first plan → land on `/plan/[weekId]`
 - Plan view: 2-band editable carb/protein targets (compact legend + modal),
-  meal-cell editing with macro propagation, Regenerate dialog (current
-  version — see `tasks/RegenerateDialog.md` for the next iteration),
-  smart Grocery button (auto-regenerates the list when it's older than
-  the plan)
-- Grocery view: AI-generated list from `/api/grocery`, no Reset/Regenerate
-  buttons (downstream auto-rebuild), back link points to the plan
-- Check-in (`/checkin/[weekId]`): meal-completion grid with Apply-to-all
-  bulk buttons, energy slider, sessions completed, free notes.
-  "Get AI feedback" → POST `/api/feedback` → renders Wins / Missed /
-  Actions panel below. "Apply suggested edits" patches the FuellingPlan
-  in Dexie.
-- Dashboard "Plan next week" → three-card chooser modal: **Copy last
-  week** (clonePlan helper), **Adjust last week** (`mode: "adjust"` +
-  baselinePlan + previousFeedback — preserves unchanged days verbatim),
-  **Generate fresh**.
+  meal-cell editing with macro propagation, Regenerate dialog (now the
+  coaching-criteria chooser — chips drive AI emphasis and render a
+  "Coaching rules" footer; replaced the old `plan.rules` footer),
+  smart Grocery button.
+- Grocery view: AI-generated list from `/api/grocery` (timeout-bounded),
+  no Reset/Regenerate buttons, back link points to the plan.
+- Check-in (`/checkin/[weekId]`): completion grid + Apply-to-all, energy,
+  sessions, notes → `/api/feedback` → Wins / Missed / Actions.
+- Dashboard "Plan next week" → three-card chooser (Copy / Adjust / Fresh).
+- Training editor: session type is blank by default ("Set type"); RACE
+  pill is gold; the distance stepper steps from the visible value.
+- `/admin` (Phase 7): password-gated nutrition-rules editor. Saves write
+  `config/nutritionRules.json` and regenerate NUTRITION_RULES.md + prompts.
 
-All three API routes live and verified:
-- `/api/plan` — 6-step periodisation, 2-band targets (Easy/Hard),
-  variance rule, override-aware. Temperature 0.2.
-- `/api/grocery` — category-aggregated shopping list with macro-check
-  table and item notes. Uses Appendix B logic.
-- `/api/feedback` — coach review producing wins/missed/recommendations
-  + optional suggestedPlanEdits.
+API routes:
+- `/api/plan` — 6-step periodisation, 2-band targets, variance rule,
+  override-aware, + coaching-criteria emphasis. Temperature 0.2.
+- `/api/grocery` — category-aggregated AI list (maxDuration 60, 50s timeout).
+- `/api/feedback` — coach review (wins/missed/recommendations + edits).
+- `/api/admin/{login,logout,rules}` — HMAC session cookie + GET/PUT config.
 
-**Working tree at handoff:** Phase 5 changes (`app/api/feedback/route.ts`,
-edits to `app/checkin/[weekId]/page.tsx` and `app/dashboard/page.tsx`)
-are uncommitted on `main`. Most recent commit is
-`e4e6368 Refresh DESIGN.md to match the built state`.
+**Working tree:** clean on `main` apart from your in-progress SPEC.md edit.
+Most recent commit `e199e7f` (Phase 7, 3/3), pushed to origin/main.
 
-Source-of-truth docs are current as of 30-05-2026:
-- **SPEC.md** — architectural contract; Appendices A–C point to
-  NUTRITION_RULES.md for nutrition logic, keep the formatting / mode /
-  schema rules locally
-- **NUTRITION_RULES.md** — sports-nutrition logic (6-step periodisation,
-  protein dosing, female-athlete + dietary overlays, hard constraints)
-- **DESIGN.md** — visual language; refreshed to match the built state
-  (Targets band, Modal pattern, screen-level details for plan /
-  dashboard chooser / grocery / check-in, Tailwind opacity-on-CSS-vars
-  gotcha)
+Source-of-truth docs:
+- **SPEC.md** — architectural contract + phase plan (§7: Phase 6 = polish +
+  hybrid grocery refactor; Phase 7 = admin [done]; Phase 8 = plan accuracy).
+- **config/nutritionRules.json** — THE nutrition source of truth (Phase 7).
+  Edit via `/admin` or directly, then `npm run regenerate:rules`.
+- **NUTRITION_RULES.md** — GENERATED artifact of the JSON (do-not-edit
+  banner). Never hand-edit.
+- **DESIGN.md** — visual language (Targets band, Modal pattern, gold RACE
+  pill token, Tailwind opacity-on-CSS-vars gotcha §11).
 
 ## Codebase orientation (for a fresh agent)
 
 - Next.js 14 App Router · TypeScript strict · React 18 · Tailwind ·
   Dexie.js (IndexedDB) for client persistence · Framer Motion · OpenAI
   `gpt-4o-mini` @ temperature 0.2.
-- `lib/db.ts` — all Dexie schemas + `clonePlan` helper.
+- `lib/db.ts` — all Dexie schemas + `clonePlan` helper (`SubSession.typeUnset`).
 - `lib/openai.ts` — `server-only` client; `OPENAI_MODEL`, `OPENAI_TEMPERATURE`.
-- `lib/prompts.ts` — `PLAN_SYSTEM_PROMPT`, `GROCERY_SYSTEM_PROMPT`,
-  `FEEDBACK_SYSTEM_PROMPT`. Derived from NUTRITION_RULES.md + SPEC.md;
-  edits flow source → code, never the reverse.
+- `lib/prompts.ts` — `buildPlanSystemPrompt()` / `buildGrocerySystemPrompt()`
+  / `buildFeedbackSystemPrompt()`. GENERATED: they read
+  `config/nutritionRules.json` at request time and interpolate values.
+- `config/nutritionRules.json` — nutrition source of truth (Phase 7).
+- `lib/nutritionRulesSchema.ts` — config types + dependency-free validator.
+- `lib/rulesRegenerator.ts` (server-only fs) + `lib/rulesMarkdown.mjs` (pure
+  template) — regenerate NUTRITION_RULES.md; `npm run regenerate:rules`.
+- `lib/adminAuth.ts` — HMAC-signed admin session cookie (node:crypto).
+- `lib/coachingCriteria.ts` — Regenerate-dialog criteria (id/label/rule/guidance).
 - `lib/defaults.ts` — 2-band carb defaults, `SESSION_TYPE_BAND` map.
-- `app/api/{plan,grocery,feedback}/route.ts` — POST handlers, all hit
-  OpenAI with `response_format: { type: "json_object" }`.
+- `app/api/{plan,grocery,feedback}/route.ts` — OpenAI POST handlers.
+- `app/api/admin/{login,logout,rules}/route.ts` — admin auth + config CRUD.
 - `app/{plan,grocery,checkin}/[weekId]/page.tsx` — week-scoped views.
 - `app/dashboard/page.tsx` — landing + plan-next-week chooser.
+- `app/admin/page.tsx` + `components/admin/*` — nutrition-rules editor.
+- `components/plan/*` — RegenerateDialog, CoachingRules, chip.
 - `components/ui/*` — hand-built primitives (no shadcn generator).
 - `tasks/*.md` — ephemeral task briefs. Delete after the user verifies.
+  (`tasks/RegenerateDialog.md` shipped — safe to delete once you've verified.)
 
 Tailwind gotcha worth re-reading in DESIGN.md §11: the `/opacity`
 modifier silently drops on hex-string CSS-var colours. Use
@@ -70,48 +75,38 @@ modifier silently drops on hex-string CSS-var colours. Use
 
 ## Pending updates
 
-Each item below is queued. Work through one at a time, top-down. After
-the user confirms an item works, delete its bullet from this list.
+Queue CLEARED — all shipped in commit `35961b6` and pushed:
+#1 grocery timeout, #2 generic dinners, #3 gold RACE pill, #4 distance
+stepper, #5 RegenerateDialog (coaching criteria), #6 blank session type.
 
-- **Bug:** Grocery list generation fails with "Request timed out."
-  - **Bug:** regenerated plan produces generic dinners like "Rice,
-    vegetables, protein" every day, even though the profile has specific
-    protein sources (chicken, beef, etc.) in food preferences.
-- **UI tweak:** change the "RACE" session pill colour to gold/amber so
-  it's visually distinct from HARD sessions.
-- **Bug:** the distance input field in the training entry form caps at
-  10 on some entries when using the up-arrow spinner.
-- **Feature:** Read `tasks/RegenerateDialog.md`. Implement as specified.
-  Delete the task file when done and verified.
-- **UX:** the session-type field in the training entry form defaults
-  to "Easy". Make it unfilled by default — pre-filling is misleading
-  because users may submit incorrect data and it implies "Easy" is the
-  system's recommendation rather than the field being blank.
-
-Rule: do NOT spend more than 2 attempts per issue. If an issue isn't
-resolved in 2 tries, rebuild the affected component from scratch using
-the existing primitives in `components/ui/*` rather than patching
-further.
+To sanity-check against the live OpenAI backend when convenient: #1 (a real
+grocery generation completes), #2 (regenerated dinners name specific proteins
+and vary across the week), #5 (selected criteria visibly shape the plan).
 
 ## Known issues / deferred (don't fix unless asked)
 
-- 
+- Plan-accuracy nuance is its own phase (SPEC §7 Phase 8) — within-day carb
+  distribution, periodisation nuance, post-session recovery, preload. The
+  plan prompt still uses the 2-band model from `lib/defaults.ts`; reconciling
+  it with the 7-day-type JSON table is Phase 8 work.
 
-## Next phase (after the pending-updates list is empty)
+## Next phase — Phase 6 (Polish), per SPEC §7 items 20–24
 
-Phase 6 — Polish (SPEC.md §7):
-- `next-pwa`, manifest, icons (Add to Home Screen, offline shell)
-- Empty / loading / error states across the app
-- Mobile QA — print views are landscape A4; the on-screen plan view's
-  day-by-day tabbed mobile layout needs a swipe option too
-- Onboarding empty-state copy
-- Strip the dev-only "Seed mock plan" empty-state button from the plan
-  view once we're confident AI generation is reliable for first-time
-  users
-- Sharpen the prompt's `rules` slot (only relevant if RegenerateDialog
-  doesn't replace it — see `tasks/RegenerateDialog.md`)
-- Mobile QA for the Targets band — likely needs to collapse or move on
-  narrow viewports
+We did Phase 7 (admin) before Phase 6, so Phase 6 is the active phase now.
+SPEC §7 is authoritative; this list mirrors it:
+
+- **PWA** — `next-pwa`, manifest, icons (Add to Home Screen / offline).
+- **Empty / loading / error states** across the app.
+- **Mobile QA** — horizontally-scrollable / swipeable plan view on narrow
+  viewports; Targets band collapse on narrow viewports.
+- **Onboarding empty-state copy.**
+- **Hybrid grocery refactor (SPEC §4.4.1, item 24)** — local-first
+  aggregation + `lib/foodMetadata.ts`, AI only for unknown foods + notes,
+  graceful degradation. The biggest item; not pure polish.
+- (CLAUDE extra) strip the dev-only "Seed mock plan" button from the plan
+  empty state; replace with a real "plan this week" CTA.
+
+Phase 8 (after 6) = plan accuracy — see "Known issues / deferred" above.
 
 # Working agreement
 
