@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Printer } from "lucide-react";
 import { getDb, type GroceryList } from "@/lib/db";
+import { generateGroceryList } from "@/lib/groceryClient";
 import { formatWeekRange } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -37,52 +38,9 @@ function GroceryEmptyState({ weekId }: { weekId: string }) {
     setGenerating(true);
     setError(null);
     try {
-      const db = getDb();
-      const [plan, foodPrefs] = await Promise.all([
-        db.fuellingPlans.get(weekId),
-        db.foodPreferences.get("me"),
-      ]);
-
-      if (!plan) {
-        throw new Error(
-          "No fuelling plan for this week yet. Generate a plan first, then come back.",
-        );
-      }
-      if (!foodPrefs) {
-        throw new Error(
-          "Missing food preferences. Re-run onboarding before generating a grocery list.",
-        );
-      }
-
-      const response = await fetch("/api/grocery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fuellingPlan: plan,
-          foodPreferences: foodPrefs,
-          includeDinner: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(
-          (errBody as { error?: string }).error ??
-            `Grocery list generation failed (HTTP ${response.status}).`,
-        );
-      }
-
-      const apiList = (await response.json()) as Omit<
-        GroceryList,
-        "id" | "weekId" | "generatedAt"
-      >;
-
-      await db.groceryLists.put({
-        ...apiList,
-        id: weekId,
-        weekId,
-        generatedAt: new Date().toISOString(),
-      });
+      // Local-first hybrid (SPEC §4.4.1): builds + saves the list, best-effort
+      // AI enrich, graceful fallback. The live query refreshes the view.
+      await generateGroceryList(weekId, true);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Grocery list generation failed.",

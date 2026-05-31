@@ -16,6 +16,7 @@
 
 import { loadRulesConfig } from "./rulesRegenerator";
 import type { NutritionRulesConfig } from "./nutritionRulesSchema";
+import { GROCERY_CATEGORY_ORDER } from "./foodMetadata";
 
 const r = (min: number, max: number) => `${min}-${max}`;
 
@@ -227,41 +228,28 @@ You output ONLY valid JSON matching this exact schema — no prose, no markdown,
 Run the verification checklists before returning. Plans that fail variance, distribution, or post-session checks must be recalculated from Step 1.`;
 }
 
+// Hybrid grocery (SPEC §4.4.1): the local builder already parsed, aggregated,
+// categorised KNOWN foods and sized everything. The AI's only jobs are to
+// categorise the leftover unknown foods and write a few shopping notes.
 export function buildGrocerySystemPrompt(): string {
-  const c = loadRulesConfig();
-  return `You are a practical grocery planner. Given a 7-day fuelling plan, produce a shopping list grouped into supermarket-aisle categories.
+  const cats = GROCERY_CATEGORY_ORDER.map((c) => `"${c}"`).join(", ");
+  return `You help build an endurance athlete's weekly grocery list. A deterministic local step has already parsed the plan, aggregated ingredients, and sized the known foods. Your job is ONLY two things:
 
-The plan's macros are authoritative — your job is to translate meals into ingredients and quantities, not to re-do the nutrition.
+1. Categorise each food in \`unknowns\` into EXACTLY ONE of these aisles: ${cats}. Pick the closest aisle; if genuinely unsure, use "Spreads & Extras". Do not invent new categories.
+2. Write 2-4 short, practical shopping notes for the week — brand suggestions, batch-cook advice, fresh-vs-frozen tradeoffs, storage hints. Each note text under ~140 chars.
 
-# Rules
-
-1. Use these categories in order: "Carbs & Grains", "Protein Drinks", "Fruit", "Dairy", "Eggs & Lean Protein", "Vegetables" (only if \`includeDinner === true\`), "Spreads, Sweeteners & Extras". Skip any category that has no items.
-2. Aggregate quantities across the week. Round up to realistic purchase sizes — e.g. "500 g" oats, "1 dozen" eggs, "×10" bananas, "2 × 1 kg" Greek yoghurt. Never write a fractional purchase quantity.
-3. For each item include a one-line \`note\` showing which meals it covers, e.g. "Breakfast Mon, Wed, Fri". Keep notes under ~60 chars.
-4. Include a \`macroCheck\` table with one entry per day, mirroring that day's \`dayTotals\` from the input \`fuellingPlan\` (same \`carbsG\`, \`proteinG\`, \`tag\`).
-5. Add 3-5 short \`notes\` — practical tips (brand suggestions, batch-cook advice, fresh-vs-frozen tradeoffs, storage hints). Each note has a \`label\` like "Note 01" (zero-padded) and a \`text\` body under ~140 chars.
-6. If \`includeDinner === false\`, exclude raw meats, the whole Vegetables category, and dinner-only items entirely.
-7. Use the athlete's \`foodPreferences\` to inform brand and product choices. Never include items on \`foodPreferences.avoid\` or the athlete's allergy list.
-8. Each item's \`id\` is a short stable slug derived from the name (lowercase, hyphen-separated).
-
-# Item-name formatting
-
-Names use ${c.formattingRules.caseStyle.toLowerCase()} ("Rolled oats", "Greek yoghurt"). Include size/spec in the name when it matters ("250 ml", "bone-in", "frozen"). Don't put the quantity in the name — that's the \`qty\` field. For branded items write the brand as the athlete would say it ("Rokeby Farms", "Up&Go Protein 250 ml").
+Use the athlete's \`foodPreferences\` for brand/product context. Never reference foods on their avoid/allergy list.
 
 # Output
 
 Output ONLY valid JSON — no prose, no markdown, no code fences:
 
 {
-  "includeDinner": boolean,
-  "categories": [
-    { "name": "Carbs & Grains", "items": [ { "id": "rolled-oats", "name": "Rolled oats", "qty": "500 g", "note": "Breakfast Mon, Wed, Fri", "checked": false } ] }
-  ],
-  "macroCheck": [ { "day": "Mon", "carbsG": 350, "proteinG": 100, "tag": "easy" } ],
+  "categoryByName": { "<each unknown food, lowercased>": "<one of the aisles above>" },
   "notes": [ { "label": "Note 01", "text": "..." } ]
 }
 
-Every item's \`checked\` is \`false\` on output — checkbox state is owned by the client.`;
+Key \`categoryByName\` by the lowercased food name exactly as given in \`unknowns\`. If \`unknowns\` is empty, return \`"categoryByName": {}\` and still provide the notes. Labels are zero-padded ("Note 01", "Note 02").`;
 }
 
 export function buildFeedbackSystemPrompt(): string {

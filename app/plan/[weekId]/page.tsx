@@ -33,6 +33,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RegenerateDialog } from "@/components/plan/RegenerateDialog";
 import { CoachingRules } from "@/components/plan/CoachingRules";
+import { generateGroceryList } from "@/lib/groceryClient";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
@@ -164,42 +165,9 @@ function PlanView({
         return;
       }
 
-      const foodPrefs = await db.foodPreferences.get("me");
-      if (!foodPrefs) {
-        throw new Error(
-          "Missing food preferences. Re-run onboarding before generating a grocery list.",
-        );
-      }
-
-      const response = await fetch("/api/grocery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fuellingPlan: plan,
-          foodPreferences: foodPrefs,
-          includeDinner: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(
-          (errBody as { error?: string }).error ??
-            `Grocery list generation failed (HTTP ${response.status}).`,
-        );
-      }
-
-      const apiList = (await response.json()) as Omit<
-        import("@/lib/db").GroceryList,
-        "id" | "weekId" | "generatedAt"
-      >;
-
-      await db.groceryLists.put({
-        ...apiList,
-        id: plan.weekId,
-        weekId: plan.weekId,
-        generatedAt: new Date().toISOString(),
-      });
+      // Local-first hybrid (SPEC §4.4.1): builds + saves, best-effort AI
+      // enrich, graceful fallback. Throws only if plan/prefs are missing.
+      await generateGroceryList(plan.weekId, true);
 
       router.push(`/grocery/${plan.weekId}`);
     } catch (e) {

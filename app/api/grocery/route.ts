@@ -1,38 +1,34 @@
 import { NextResponse } from "next/server";
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from "@/lib/openai";
 import { buildGrocerySystemPrompt } from "@/lib/prompts";
-import type { GroceryList } from "@/lib/db";
+import {
+  GROCERY_CATEGORY_ORDER,
+  FALLBACK_CATEGORY,
+  type GroceryCategoryName,
+} from "@/lib/foodMetadata";
 
 export const runtime = "nodejs";
-
-// Give the platform headroom for the OpenAI call. Without this, some hosts
-// (Vercel) cap serverless functions at ~10s and kill the request mid-generation.
-// Per SPEC §4.4.1 build order (Phase 4 interim, before the hybrid refactor).
 export const maxDuration = 60;
 
-// Per-request bound on the OpenAI call. The SDK default is a 10-minute timeout,
-// so a stalled generation hangs for the full 10 min before surfacing
-// "Request timed out." — the bug this route was reported with. Capping the
-// request at 50s (within the 60s function budget) surfaces a clear error
-// quickly instead of hanging.
-const GROCERY_REQUEST_TIMEOUT_MS = 50_000;
+// Enrich-only endpoint (SPEC §4.4.1 hybrid). The client builds + sizes the
+// list locally and calls this only to categorise unknown foods and write
+// coaching notes. Best-effort: the client falls back gracefully if this fails.
+const REQUEST_TIMEOUT_MS = 45_000;
+const MAX_TOKENS = 1500;
 
-// A full week's grocery list fits comfortably under this. Bounding output tokens
-// stops a runaway generation from being the thing that stalls the request.
-const GROCERY_MAX_TOKENS = 4096;
-
-interface GroceryRequestBody {
-  fuellingPlan: unknown;
+interface EnrichBody {
+  unknowns: string[];
   foodPreferences: unknown;
-  includeDinner: boolean;
+  dayTotals?: unknown;
+  includeDinner?: boolean;
 }
 
-function isValidBody(body: unknown): body is GroceryRequestBody {
+const VALID = new Set<string>(GROCERY_CATEGORY_ORDER);
+
+function isValidBody(body: unknown): body is EnrichBody {
   if (!body || typeof body !== "object") return false;
   const b = body as Record<string, unknown>;
-  if (!b.fuellingPlan || !b.foodPreferences) return false;
-  if (typeof b.includeDinner !== "boolean") return false;
-  return true;
+  return Array.isArray(b.unknowns) && !!b.foodPreferences;
 }
 
 export async function POST(req: Request) {
@@ -47,18 +43,11 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: "Request body must be valid JSON." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
-
   if (!isValidBody(body)) {
     return NextResponse.json(
-      {
-        error:
-          "Invalid body. Required: fuellingPlan, foodPreferences, includeDinner (boolean).",
-      },
+      { error: "Invalid body. Required: unknowns (string[]), foodPreferences." },
       { status: 400 },
     );
   }
@@ -68,43 +57,53 @@ export async function POST(req: Request) {
       {
         model: OPENAI_MODEL,
         temperature: OPENAI_TEMPERATURE,
-        max_tokens: GROCERY_MAX_TOKENS,
+        max_tokens: MAX_TOKENS,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: buildGrocerySystemPrompt() },
           { role: "user", content: JSON.stringify(body) },
         ],
       },
-      { timeout: GROCERY_REQUEST_TIMEOUT_MS },
+      { timeout: REQUEST_TIMEOUT_MS },
     );
 
     const raw = completion.choices[0]?.message?.content;
     if (!raw) {
-      return NextResponse.json(
-        { error: "Model returned an empty completion." },
-        { status: 502 },
-      );
+      return NextResponse.json({ error: "Model returned an empty completion." }, { status: 502 });
     }
 
-    let parsed: Partial<GroceryList>;
+    let parsed: { categoryByName?: unknown; notes?: unknown };
     try {
-      parsed = JSON.parse(raw) as Partial<GroceryList>;
+      parsed = JSON.parse(raw);
     } catch {
-      return NextResponse.json(
-        { error: "Model returned invalid JSON.", raw },
-        { status: 502 },
-      );
+      return NextResponse.json({ error: "Model returned invalid JSON.", raw }, { status: 502 });
     }
 
-    // The client adds id, weekId, generatedAt before persisting to Dexie.
-    return NextResponse.json(parsed);
+    // Coerce categories to the allowed set (lowercased keys); drop bad notes.
+    const categoryByName: Record<string, GroceryCategoryName> = {};
+    const rawCats = (parsed.categoryByName ?? {}) as Record<string, unknown>;
+    for (const [name, cat] of Object.entries(rawCats)) {
+      categoryByName[name.toLowerCase()] =
+        typeof cat === "string" && VALID.has(cat)
+          ? (cat as GroceryCategoryName)
+          : FALLBACK_CATEGORY;
+    }
+
+    const notes = Array.isArray(parsed.notes)
+      ? parsed.notes
+          .filter(
+            (n): n is { label: string; text: string } =>
+              !!n && typeof (n as { text?: unknown }).text === "string",
+          )
+          .slice(0, 4)
+          .map((n, i) => ({ label: n.label ?? `Note ${String(i + 1).padStart(2, "0")}`, text: n.text }))
+      : [];
+
+    return NextResponse.json({ categoryByName, notes });
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("[/api/grocery] OpenAI call failed:", e);
+    console.error("[/api/grocery] enrich failed:", e);
     const message = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json(
-      { error: `Grocery list generation failed: ${message}` },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: `Grocery enrich failed: ${message}` }, { status: 502 });
   }
 }
