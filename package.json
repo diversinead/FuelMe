@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "regenerate:rules": "node scripts/regenerate-rules.mjs"
+    "regenerate:rules": "node scripts/regenerate-rules.mjs",
+    "gen:icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
