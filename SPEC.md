@@ -14,7 +14,7 @@ This document is the complete brief. Build it in the order given. Do not skip ah
 - **Local data:** Dexie.js (IndexedDB wrapper). All user data lives on-device for now.
 - **AI:** OpenAI GPT-4o-mini via Next.js Route Handlers (`/api/*`). Key in `OPENAI_API_KEY` env var, **never exposed to client**.
 - **PDF/print:** Native `window.print()` against client-rendered print-styled routes (`/plan/[weekId]/print`, `/grocery/[weekId]/print`). These pages share the in-app minimal visual language, scoped under `.sheet` to override the dark shell and print on white paper.
-- **PWA:** Add `next-pwa` so users can "Add to Home Screen" and use offline.
+- **PWA:** A web app manifest + icons (`app/manifest.ts`, `app/icon.svg`, generated PNGs) make the app installable ("Add to Home Screen"). Shipped in Phase 6 **without a dependency**; no offline service worker yet.
 - **Deployment target:** Vercel.
 
 **Architecture rule:** all OpenAI calls go through `/api/*` Route Handlers. The client never sees the API key. This makes the future "user supplies own key" migration trivial — you'll just read the key from headers or user record instead of `process.env`.
@@ -300,7 +300,8 @@ Minimal, scannable. The visual hierarchy is: food at the top of each cell, macro
   - **Meal rows:** leftmost column shows the slot name (`Breakfast`, `Post-AM`, `Lunch`, `Afternoon`, `Dinner`) in mono uppercase tertiary grey — no "Pre-AM / Within 30 min" subtitle. Each meal cell is `flex flex-col justify-between` with `min-height: 88px`. Food string sits at the top in 13px ink, line-height 1.45. Macros pinned to the bottom right, `font-mono` 11px, just two coloured numbers (`--macro-carbs` then `--macro-protein`) — no `C` / `P` letters, no `g` units, no chip backgrounds.
   - **Totals row:** `Total` label in the leftmost column. Each day cell shows two coloured numbers (carbs then protein) in 13px font-medium mono, right-aligned. No `EASY/HARD/LONG` tag suffix (already in the header pill).
   - **Borders:** horizontal hairlines (`0.5px --border-default`) between every row and below the header. Vertical hairlines on each day column's left edge (label column has no left border). Totals row has no bottom border.
-- **Rules footer:** below the grid with ~28px gap and a 0.5px top border. 3-column equal grid showing the three rules. Each rule: tiny mono uppercase tertiary `RULE 01` / `RULE 02` / `RULE 03` label, then the rule text in 12px secondary, line-height 1.5. No box, no background, no card around them.
+- **Coaching-rules footer:** below the grid with ~28px gap and a 0.5px top border, rendered **only when the plan has applied coaching criteria** (chosen in the Regenerate dialog — see below). Responsive 1/2/3-column grid; each block: tiny mono uppercase tertiary label (the criterion's chip text) + its rule text in 12px secondary, line-height 1.5. No box/background. *(This replaced the old AI `plan.rules` RULE 01/02/03 footer.)*
+- **Regenerate dialog:** opens from the Regenerate action — multi-select coaching-criteria chips ("What should we focus on this week?"). Selected criteria shape the AI generation (their `promptGuidance`) and render in the coaching-rules footer above; selection is ephemeral (resets each open). See `lib/coachingCriteria.ts` + `components/plan/*`.
 
 **Layout (mobile, <768px):**
 
@@ -324,7 +325,7 @@ Same minimal language as the plan view — single-column scannable list, no card
 
 **Layout:**
 
-- **Top utility row:** "← Dashboard" back link left, actions right (Reset · Print · Regenerate (Phase 4) · Toggle "include dinner items" — Phase 4).
+- **Top utility row:** "← Fuelling plan" back link left (the list is downstream of the plan); the only action is **Print**. No Reset/Regenerate — the list rebuilds automatically when you open Grocery from the plan and the existing list is older than the plan.
 - **Header strip:** `Groceries` title, `Week of [date]` mono tertiary, and a `X of Y` progress count. Below it a thin progress bar (`--accent` fill on `--surface-2` track).
 - **Category sections:** vertical list, single column on mobile, can become two columns on wide desktop. Each section header is mono uppercase tracking-widest, sticky on scroll (`--surface-2/95` backdrop blur in the in-app view).
 - **Items:** each row is checkbox left, item name in body text, quantity right-aligned in `font-mono` `--accent` (teal in app), optional note below in italic tertiary. Tapping the checkbox toggles `checked` in Dexie immediately. Checked rows fade to 40% opacity, name gets strikethrough.
@@ -333,7 +334,6 @@ Same minimal language as the plan view — single-column scannable list, no card
 
 **Print route `/grocery/[weekId]/print`:** ports the same layout to A4 portrait via `@page` rules. White paper, two-column CSS columns for categories so the page packs efficiently, macro check section forced onto a new page via `page-break-before: always`. Filled black checkbox squares with a tick when `it.checked === true`. Triggers `window.print()` on mount if `?auto=1`.
 
-#### 4.4.1
 ### 4.4.1 Grocery list generation strategy (hybrid)
 
 Grocery list generation uses a **hybrid local + AI approach** instead of pure AI:
@@ -430,24 +430,31 @@ When the dashboard's "Up next" CTA is "Plan next week" (i.e. the current week ha
 
 ## 5. API routes
 
-Three Route Handlers under `app/api/`. All use the OpenAI Node SDK and return JSON.
+OpenAI Route Handlers under `app/api/` (`plan`, `grocery`, `feedback`) plus
+the Phase 7 admin routes (`app/api/admin/{login,logout,rules}` — cookie auth +
+nutrition-rules config CRUD; see §4.4.1 / tasks/AdminPage history). All return JSON.
 
 ### 5.1 `POST /api/plan`
 
-**Body:** `{ mode, profile, foodPreferences, trainingWeek, previousFeedback?, baselinePlan? }` — where:
+**Body:** `{ mode, profile, foodPreferences, trainingWeek, previousFeedback?, baselinePlan?, carbTargetsGperKg?, proteinTargetGperKg?, selectedCriteria? }` — where:
 - `mode: "fresh" | "adjust"` (required) — selects generation behaviour. See §4.7.
 - `baselinePlan: FuellingPlan` (required when `mode === "adjust"`) — last week's plan, used as the verbatim baseline the AI selectively modifies.
 - `previousFeedback?: string` — optional carry-forward of `aiFeedback.recommendations` from the previous check-in.
+- `carbTargetsGperKg?` / `proteinTargetGperKg?` — optional Targets-band overrides of the default carb/protein multipliers.
+- `selectedCriteria?: string[]` — coaching-criterion ids from the Regenerate dialog; their `promptGuidance` is appended to the system prompt. Matched ids are echoed back as `appliedCriteria` and stored on the plan.
 
-**Server prompt:** see Appendix A. Returns a structured `FuellingPlan` (without id/weekId — client adds those).
+**Server prompt:** built at request time by `buildPlanSystemPrompt()` in `lib/prompts.ts` from `config/nutritionRules.json` (see Appendix A). Returns a structured `FuellingPlan` (without id/weekId — client adds those) plus `appliedCriteria`.
 
-Model: `gpt-4o-mini`, `response_format: { type: 'json_object' }`, temperature 0.5.
+Model: `gpt-4o-mini`, `response_format: { type: 'json_object' }`, temperature 0.2.
 
-### 5.2 `POST /api/grocery`
+### 5.2 `POST /api/grocery` — enrich only (hybrid, see §4.4.1)
 
-**Body:** `{ fuellingPlan, foodPreferences, includeDinner }`
+The grocery list is built **client-side** from the plan (`lib/grocery.ts` +
+`lib/foodMetadata.ts`, instant/offline). This route only enriches it.
 
-**Server prompt:** see Appendix B. Returns a structured `GroceryList`.
+**Body:** `{ unknowns: string[], foodPreferences, dayTotals?, includeDinner? }` — `unknowns` are food names not found in the local metadata table.
+
+**Returns:** `{ categoryByName: Record<string, GroceryCategoryName>, notes: { label, text }[] }` — an aisle for each unknown food + 2–4 shopping notes. Best-effort: the client falls back to a default aisle + deterministic notes if this fails. **Server prompt:** see Appendix B. `maxDuration = 60`.
 
 ### 5.3 `POST /api/feedback`
 
@@ -593,13 +600,49 @@ Sits between grocery generation (Phase 4) and the check-in loop (Phase 5). Lets 
 ✅ **Milestone:** full feedback loop. Ship.
 
 ### Phase 6 — Polish
-20. Add `next-pwa`, manifest, icons
+20. PWA — web app manifest + icons (installable; no dependency, no `next-pwa`)
 21. Empty states, loading states, error toasts
 22. Mobile QA — the print views are landscape A4, but the on-screen plan view needs a horizontally-scrollable variant on narrow viewports
 23. Light onboarding empty-state copy
 24. Refactor grocery list generation to hybrid local + AI per §4.4.1. Seed `lib/foodMetadata.ts` from foods observed in real generated plans.
 
-### Phase 7 (later) — Cloud sync + BYO key
+### Phase 7 — Admin page for nutrition rules
+
+Build the admin page per `tasks/AdminPage.md`. Single-user, password-protected,
+local-dev only. Phase 7 — Admin page for nutrition rules
+
+## Phase 8 - Plan accuracy 
+
+The athlete flagged this as the single most important part of the app; we
+agreed to defer it to a focused pass after the pending-updates queue, with
+significant time budgeted. These are AI/prompt-quality issues in
+`/api/plan` (the grid renders the model's `dayTotals`/`carbsG` verbatim, so
+these are generation problems, not rendering bugs). Source → code:
+fixes flow through NUTRITION_RULES.md (+ SPEC Appendix A) then `lib/prompts.ts`.
+
+Observed 30-05-2026 on a regenerated plan:
+- **Within-day distribution broken** — a single meal can carry the entire
+  day's carbs (e.g. Monday breakfast 350 g while the day total is also
+  350 g). Step 5 percentages (breakfast 20-25%, etc.) are being ignored.
+- **No periodisation nuance** — every Easy day is a flat identical total
+  (350) and every Hard day a flat identical total (490). The prompt's
+  Step 2 "two values for the whole week — that's it" over-flattened and
+  now contradicts NUTRITION_RULES Step 3 (preload) and the post-session
+  recovery rules.
+- **No post-session recovery emphasis** — hard/long days don't show the
+  elevated carbs+protein in the post-session meal (NUTRITION_RULES §5,
+  W×1.0-1.2 carbs + W×0.3 protein within 30 min).
+- **No preload-the-night-before** — dinner the evening before a hard/long/
+  race day isn't carb-loaded (NUTRITION_RULES Step 3).
+- Carb totals also read as high/blunt — revisit once the above land.
+- Consider whether temperature 0.2 is too low (biases toward repetition);
+  the SPEC says 0.5.
+
+Keep the 2-band Targets UI contract intact — the bands set each day's
+baseline; layer distribution + preload + recovery nuance on top.
+
+
+### Phase 9 (later) — Cloud sync + BYO key
 - Add Supabase (auth + Postgres tables mirroring Dexie schema)
 - Sync layer: Dexie remains local cache, Supabase is source of truth
 - Settings → BYO OpenAI key
@@ -630,7 +673,7 @@ All three prompts share these conventions:
 
 The runtime system prompt lives in `lib/prompts.ts` as `PLAN_SYSTEM_PROMPT`. Two sources of truth feed it:
 
-- **Nutrition logic derives from `NUTRITION_RULES.md`** — see that file for carb periodisation, protein dosing, timing rules, sport-specific overlays, female-athlete logic, dietary pattern overlays, and hard constraints. When the rules document changes, ask Claude Code to re-read it and resync `lib/prompts.ts`. SPEC.md should not need editing for nutrition changes.
+- **Nutrition logic is generated from `config/nutritionRules.json`** (Phase 7) — the source of truth for carb periodisation, protein dosing, timing, sport/female/dietary overlays, and hard constraints. `lib/prompts.ts` builders read it at request time; `NUTRITION_RULES.md` is a generated artifact. Edit the JSON via the `/admin` page (or directly, then `npm run regenerate:rules`) — never hand-edit the generated MD or prompt numbers.
 
 - **The architectural contract** lives here in SPEC.md (below): food-string formatting, mode-aware behaviour, output schema, JSON examples. These shape downstream rendering, API contracts, and the data model — they belong with the spec, not the nutrition rules.
 
@@ -709,49 +752,39 @@ The runtime system prompt lives in `lib/prompts.ts` as `PLAN_SYSTEM_PROMPT`. Two
 - `previousFeedback` is optional in both modes — carries forward `aiFeedback.recommendations` from the previous check-in when one exists.
 - Only `SubSession` fields are sent in `trainingWeek.sessions[].sessions`; the derived `DaySession.type`/`description`/`distanceKm`/`durationMin` are recomputed server-side if needed, but the prompt should drive off the raw sub-sessions plus `weekNotes`.
 
-## Appendix B — `/api/grocery` prompt
+## Appendix B — `/api/grocery` prompt (enrich only)
 
-**System:**
+Per the §4.4.1 hybrid: the local builder (`lib/grocery.ts` + `lib/foodMetadata.ts`)
+already parses the plan, aggregates ingredients, categorises + sizes KNOWN
+foods, and builds the macro-check table client-side. The AI's only jobs are
+to categorise the leftover unknown foods and write the shopping notes. The
+prompt is built by `buildGrocerySystemPrompt()` in `lib/prompts.ts`.
+
+**System (shape):**
 
 ```
-You are a practical grocery planner. Given a 7-day fuelling plan, produce a shopping list grouped into supermarket-aisle categories.
+You help build an endurance athlete's weekly grocery list. A deterministic
+local step has already parsed the plan, aggregated ingredients, and sized the
+known foods. Your only two jobs:
+1. Categorise each food in `unknowns` into EXACTLY ONE of the aisles:
+   "Carbs & Grains", "Protein Drinks", "Fruit", "Dairy", "Eggs & Lean Protein",
+   "Vegetables", "Spreads & Extras". If unsure, use "Spreads & Extras".
+2. Write 2-4 short, practical shopping notes for the week.
 
-Rules:
-1. Use these categories in order: "Carbs & Grains", "Protein Drinks", "Fruit", "Dairy", "Eggs & Lean Protein", "Vegetables" (only if includeDinner=true), "Spreads, Sweeteners & Extras". Skip any category with no items.
-2. Aggregate quantities across the week. Round up to realistic purchase sizes (e.g. "500 g" oats, "1 dozen" eggs, "×10" bananas).
-3. For each item include a one-line note showing which meals it covers, e.g. "Breakfast Mon, Wed, Fri".
-4. Add a "macroCheck" table summarising each day's pre-dinner carbs and protein contribution (or full-day if includeDinner=true).
-5. Add 3–5 short "notes" — practical tips like brand suggestions, batch-cook advice, fresh-vs-frozen tradeoffs.
-6. If includeDinner=false, exclude raw meats, vegetables, and dinner-only items entirely.
-
-Output ONLY valid JSON matching this schema:
-
+Output ONLY valid JSON:
 {
-  "includeDinner": boolean,
-  "categories": [
-    {
-      "name": "Carbs & Grains",
-      "items": [
-        { "id": "uuid-or-slug", "name": "Rolled oats", "qty": "500 g", "note": "Breakfast Mon, Wed, Fri, Sat, Sun", "checked": false }
-      ]
-    }
-  ],
-  "macroCheck": [
-    { "day": "Mon", "carbsG": 190, "proteinG": 80, "tag": "easy" }
-  ],
-  "notes": [
-    { "label": "Note 01", "text": "..." }
-  ]
+  "categoryByName": { "<each unknown food, lowercased>": "<one aisle above>" },
+  "notes": [ { "label": "Note 01", "text": "..." } ]
 }
 ```
 
-**User message:** `{ fuellingPlan, foodPreferences, includeDinner }`
+**User message:** `{ unknowns: string[], foodPreferences, dayTotals?, includeDinner? }`
 
 ## Appendix C — `/api/feedback` prompt
 
 The runtime system prompt lives in `lib/prompts.ts` as `FEEDBACK_SYSTEM_PROMPT`. Two sources of truth feed it:
 
-- **Pattern-detection and feedback logic derives from `NUTRITION_RULES.md`** — see that file for under-fuelling signals, LEA / RED-S monitoring, female-athlete considerations, iron-deficiency signs, and hard constraints. When the rules document changes, ask Claude Code to re-read it and resync `lib/prompts.ts`. SPEC.md should not need editing for nutrition changes.
+- **Pattern-detection and feedback logic is generated from `config/nutritionRules.json`** (Phase 7) — under-fuelling signals, LEA / RED-S monitoring, female-athlete considerations, iron-deficiency signs, and hard constraints all derive from it via the `lib/prompts.ts` builders. Edit the JSON (via `/admin` or directly, then `npm run regenerate:rules`); `NUTRITION_RULES.md` is a generated artifact.
 
 - **The architectural contract** lives here in SPEC.md (below): tone, output sections, food-string formatting for `suggestedPlanEdits`, output schema. These shape downstream rendering and the data model.
 

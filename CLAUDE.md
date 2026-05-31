@@ -37,7 +37,9 @@ API routes:
 Most recent commit `ecd5594` (Phase 6 PWA), pushed to origin/main. PWA is
 installable (`app/manifest.ts`, `app/icon.svg`, `npm run gen:icons`).
 
-Source-of-truth docs:
+Source-of-truth docs — **on session start, read these after this file, in
+order:** SPEC.md → config/nutritionRules.json (+ lib/nutritionRulesSchema.ts)
+→ NUTRITION_RULES.md → DESIGN.md.
 - **SPEC.md** — architectural contract + phase plan (§7: Phase 6 = polish +
   hybrid grocery refactor; Phase 7 = admin [done]; Phase 8 = plan accuracy).
 - **config/nutritionRules.json** — THE nutrition source of truth (Phase 7).
@@ -84,15 +86,31 @@ Tailwind gotcha worth re-reading in DESIGN.md §11: the `/opacity`
 modifier silently drops on hex-string CSS-var colours. Use
 `color-mix(in srgb, var(--token) N%, transparent)` inline instead.
 
+## Run / env quickstart
+
+- `npm run dev` — Next dev server (Windows). It picks the first free port, so
+  it often lands on 3001/3002 if 3000 is busy — read the printed URL.
+- `npm run typecheck` (tsc) · `npm run lint` (next lint) — both must stay green.
+- `.env` (gitignored) holds `OPENAI_API_KEY` and `ADMIN_PASSWORD` (the `/admin`
+  password; currently `fuel-admin-dev`). `.env.example` documents both.
+- `npm run regenerate:rules` — rebuild NUTRITION_RULES.md from the JSON.
+- `npm run gen:icons` — rebuild the PWA icons (no-dep encoder).
+- `/admin` is a hidden URL (no nav link); local-dev only (read-only FS in prod).
+
 ## Pending updates
 
-Queue CLEARED — all shipped in commit `35961b6` and pushed:
-#1 grocery timeout, #2 generic dinners, #3 gold RACE pill, #4 distance
-stepper, #5 RegenerateDialog (coaching criteria), #6 blank session type.
+**Workflow:** work the list below one at a time, top-down. After each item,
+give a short summary + a verification checklist and WAIT for confirmation
+before moving on; once confirmed, delete that bullet. Max 2 attempts per
+issue — if it isn't resolved in 2 tries, rebuild the affected component from
+the primitives in `components/ui/*` rather than patching further.
 
-To sanity-check against the live OpenAI backend when convenient: #1 (a real
-grocery generation completes), #2 (regenerated dinners name specific proteins
-and vary across the week), #5 (selected criteria visibly shape the plan).
+<!-- Add fix-list items here as bullets. -->
+
+Previous queue (#1–#6) CLEARED — shipped in `35961b6` and pushed. Optional
+live-backend sanity-checks if not yet done: #1 (a real grocery generation
+completes), #2 (regenerated dinners name specific proteins and vary across
+the week), #5 (selected criteria visibly shape the plan).
 
 ## Known issues / deferred (don't fix unless asked)
 
