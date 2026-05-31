@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from "@/lib/openai";
-import { PLAN_SYSTEM_PROMPT } from "@/lib/prompts";
+import { buildPlanSystemPrompt } from "@/lib/prompts";
 import { criteriaForIds } from "@/lib/coachingCriteria";
 import type { FuellingPlan } from "@/lib/db";
 
@@ -19,14 +19,16 @@ interface PlanRequestBody {
   selectedCriteria?: string[];
 }
 
-// Build the system prompt, appending any user-selected coaching emphasis.
+// Build the system prompt (generated from config/nutritionRules.json),
+// appending any user-selected coaching emphasis.
 function buildSystemPrompt(selectedCriteria: string[] | undefined): string {
+  const base = buildPlanSystemPrompt();
   const criteria = criteriaForIds(selectedCriteria);
-  if (criteria.length === 0) return PLAN_SYSTEM_PROMPT;
+  if (criteria.length === 0) return base;
   const lines = criteria
     .map((c) => `- ${c.label}: ${c.promptGuidance}`)
     .join("\n");
-  return `${PLAN_SYSTEM_PROMPT}
+  return `${base}
 
 # Additional emphasis this week (user-selected priorities)
 

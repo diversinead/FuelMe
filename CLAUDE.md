@@ -95,50 +95,7 @@ further.
 
 ## Known issues / deferred (don't fix unless asked)
 
-- `PlannedMeal.note` and `PlannedMeal.isCritical` are stored but not
-  rendered in the cell — notes will surface in a future tap/hover
-  affordance; isCritical is currently dormant.
-- Targets band state is in-memory only; each page load resets to
-  defaults. Could persist to Profile or FuellingPlan if athletes want
-  their custom bands sticky.
-- Plan view empty state still shows "Seed mock plan" for dev
-  convenience. Remove before shipping.
-- Adjust mode hasn't been heavily tested end-to-end. The prompt rules
-  are there but verification of "preserve unchanged days verbatim"
-  behaviour in production weeks is still needed.
-- Manual meal edits don't bump the plan's `generatedAt`; the smart
-  Grocery freshness check only triggers regenerate after a `/api/plan`
-  call. Flag if users complain.
-
-## Plan accuracy — dedicated fine-tuning pass (DEFERRED, high priority)
-
-The athlete flagged this as the single most important part of the app; we
-agreed to defer it to a focused pass after the pending-updates queue, with
-significant time budgeted. These are AI/prompt-quality issues in
-`/api/plan` (the grid renders the model's `dayTotals`/`carbsG` verbatim, so
-these are generation problems, not rendering bugs). Source → code:
-fixes flow through NUTRITION_RULES.md (+ SPEC Appendix A) then `lib/prompts.ts`.
-
-Observed 30-05-2026 on a regenerated plan:
-- **Within-day distribution broken** — a single meal can carry the entire
-  day's carbs (e.g. Monday breakfast 350 g while the day total is also
-  350 g). Step 5 percentages (breakfast 20-25%, etc.) are being ignored.
-- **No periodisation nuance** — every Easy day is a flat identical total
-  (350) and every Hard day a flat identical total (490). The prompt's
-  Step 2 "two values for the whole week — that's it" over-flattened and
-  now contradicts NUTRITION_RULES Step 3 (preload) and the post-session
-  recovery rules.
-- **No post-session recovery emphasis** — hard/long days don't show the
-  elevated carbs+protein in the post-session meal (NUTRITION_RULES §5,
-  W×1.0-1.2 carbs + W×0.3 protein within 30 min).
-- **No preload-the-night-before** — dinner the evening before a hard/long/
-  race day isn't carb-loaded (NUTRITION_RULES Step 3).
-- Carb totals also read as high/blunt — revisit once the above land.
-- Consider whether temperature 0.2 is too low (biases toward repetition);
-  the SPEC says 0.5.
-
-Keep the 2-band Targets UI contract intact — the bands set each day's
-baseline; layer distribution + preload + recovery nuance on top.
+- 
 
 ## Next phase (after the pending-updates list is empty)
 
@@ -159,9 +116,11 @@ Phase 6 — Polish (SPEC.md §7):
 # Working agreement
 
 - Follow SPEC.md as the architectural source of truth.
-- Follow NUTRITION_RULES.md as the nutrition source of truth. Prompts
-  in `lib/prompts.ts` are derived; edits flow source → code, never the
-  reverse.
+- `config/nutritionRules.json` is the nutrition source of truth (Phase 7).
+  `NUTRITION_RULES.md` and the prompt builders in `lib/prompts.ts` are
+  GENERATED from it — edit the JSON via the `/admin` page (or directly,
+  then `npm run regenerate:rules`); never hand-edit the generated MD, and
+  never change prompt numbers without changing the JSON.
 - Follow DESIGN.md as the visual source of truth.
 - Work in phases. Don't start the next phase until I confirm the
   current one works.

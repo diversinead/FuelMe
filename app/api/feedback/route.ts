@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from "@/lib/openai";
-import { FEEDBACK_SYSTEM_PROMPT } from "@/lib/prompts";
+import { buildFeedbackSystemPrompt } from "@/lib/prompts";
 import type { AIFeedback } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       temperature: OPENAI_TEMPERATURE,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: FEEDBACK_SYSTEM_PROMPT },
+        { role: "system", content: buildFeedbackSystemPrompt() },
         { role: "user", content: JSON.stringify(body) },
       ],
     });

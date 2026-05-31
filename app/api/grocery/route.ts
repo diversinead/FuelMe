@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from "@/lib/openai";
-import { GROCERY_SYSTEM_PROMPT } from "@/lib/prompts";
+import { buildGrocerySystemPrompt } from "@/lib/prompts";
 import type { GroceryList } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         max_tokens: GROCERY_MAX_TOKENS,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: GROCERY_SYSTEM_PROMPT },
+          { role: "system", content: buildGrocerySystemPrompt() },
           { role: "user", content: JSON.stringify(body) },
         ],
       },

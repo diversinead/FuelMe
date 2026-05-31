@@ -1,0 +1,298 @@
+{
+  "corePrinciples": [
+    "Eat for the work. Carb intake scales with training demand; easy days are slightly lower than hard days. Periodise across the week.",
+    "Food first, supplements last. Gels/drinks/bars only during or immediately post-session, or when whole food is impractical.",
+    "Recovery starts within 30 minutes of a hard or long session.",
+    "Sleep and digestion matter. Dinners not so heavy they impair sleep; avoid high-fibre/high-fat within 2 hours of bed.",
+    "Consistency beats variety. Repeating foods that work is fine — same breakfast 4-5x/week if it works.",
+    "Under-fuelling is the bigger risk than over-fuelling. Default to the higher end of carb ranges, especially for women, masters athletes, and anyone with fatigue/illness/poor-recovery history.",
+    "No moralising about food. Pizza, chocolate, alcohol, ice cream — all fine in context."
+  ],
+  "carbPeriodisation": {
+    "dayTypes": [
+      { "id": "REST", "label": "Rest", "description": "No session.", "multiplierMin": 3, "multiplierMax": 5 },
+      { "id": "EASY", "label": "Easy", "description": "Single session under 60 min at low intensity (recovery jog, easy spin).", "multiplierMin": 5, "multiplierMax": 7 },
+      { "id": "MODERATE", "label": "Moderate", "description": "60-90 min including tempo, threshold, or interval work.", "multiplierMin": 6, "multiplierMax": 8 },
+      { "id": "HARD", "label": "Hard", "description": "Intervals, threshold, or hard tempo under 90 min.", "multiplierMin": 7, "multiplierMax": 9 },
+      { "id": "LONG", "label": "Long", "description": "Any session 90 min or longer, regardless of intensity.", "multiplierMin": 8, "multiplierMax": 10 },
+      { "id": "DOUBLE", "label": "Double", "description": "Two sessions in one day, OR any single session 2.5+ hours.", "multiplierMin": 9, "multiplierMax": 11 },
+      { "id": "RACE", "label": "Race", "description": "Race day.", "multiplierMin": 10, "multiplierMax": 12 }
+    ],
+    "preloadCarbsMin": 1,
+    "preloadCarbsMax": 2,
+    "minimumVarianceMultiplier": 3,
+    "withinDayDistribution": {
+      "breakfastPct": [20, 25],
+      "postAmRefuelPct": [10, 15],
+      "lunchPct": [20, 25],
+      "afternoonPct": [10, 15],
+      "dinnerPct": [25, 30],
+      "preBedPct": [5, 10]
+    }
+  },
+  "protein": {
+    "profiles": [
+      { "id": "endurance_maintenance", "label": "Endurance, maintenance", "multiplierMin": 1.6, "multiplierMax": 1.8 },
+      { "id": "muscle_or_deficit", "label": "Endurance + muscle building OR calorie deficit", "multiplierMin": 1.8, "multiplierMax": 2.2 },
+      { "id": "strength_combined", "label": "Strength or combined endurance + strength", "multiplierMin": 1.8, "multiplierMax": 2.4 },
+      { "id": "vegan", "label": "Vegan (digestibility adjustment)", "multiplierMin": 1.8, "multiplierMax": 2.2 }
+    ],
+    "mastersAddition": [0.1, 0.2],
+    "lutealAddition": [0.1, 0.2],
+    "perMealMultiplierMin": 0.3,
+    "perMealMultiplierMax": 0.4,
+    "postSessionMultiplier": 0.3,
+    "preBedMultiplierMin": 0.3,
+    "preBedMultiplierMax": 0.4
+  },
+  "hydration": {
+    "baselineMlPerKgMin": 30,
+    "baselineMlPerKgMax": 40,
+    "duringTrainingMlPerHrMin": 500,
+    "duringTrainingMlPerHrMax": 750,
+    "electrolyteThresholdMin": 60,
+    "sodiumMgPerLitreMin": 300,
+    "sodiumMgPerLitreMax": 700
+  },
+  "timing": {
+    "preSession": [
+      { "hoursBeforeMin": 3, "hoursBeforeMax": 4, "carbs": { "type": "multiplier", "min": 1, "max": 4 }, "notes": "Full meal, moderate protein, low-moderate fat, low fibre." },
+      { "hoursBeforeMin": 1, "hoursBeforeMax": 2, "carbs": { "type": "multiplier", "min": 1, "max": 2 }, "notes": "Smaller meal/snack, low fat, low fibre." },
+      { "hoursBeforeMin": 0, "hoursBeforeMax": 0.5, "carbs": { "type": "absolute", "min": 30, "max": 60, "unit": "g" }, "notes": "Only if needed. Avoid the 30-60 min pre-session insulin-dip window." }
+    ],
+    "duringSession": [
+      { "durationMin": 0, "durationMax": 60, "carbsPerHourMin": 0, "carbsPerHourMax": 0 },
+      { "durationMin": 60, "durationMax": 90, "carbsPerHourMin": 30, "carbsPerHourMax": 60 },
+      { "durationMin": 90, "durationMax": 150, "carbsPerHourMin": 60, "carbsPerHourMax": 90 },
+      { "durationMin": 150, "durationMax": null, "carbsPerHourMin": 90, "carbsPerHourMax": 120 }
+    ],
+    "postSession": {
+      "windowMinutes": 30,
+      "carbsMultiplierMin": 1.0,
+      "carbsMultiplierMax": 1.2,
+      "proteinMultiplier": 0.3,
+      "fluidMlMin": 500,
+      "fluidMlMax": 750
+    }
+  },
+  "sportOverlays": {
+    "running": {
+      "label": "Running",
+      "rules": [
+        "Higher impact than cycling — gut tolerance during runs is lower; default to liquid carbs over solids on runs > 60 min.",
+        "Long runs deplete glycogen faster per minute — apply LONG classification at 90 min, not 2 hours.",
+        "Recovery is harder (eccentric muscle damage); post-run protein is non-negotiable for any session > 45 min hard.",
+        "Marathon training: increase total daily carbs 10-15% during peak weeks; mind iron intake."
+      ]
+    },
+    "cycling": {
+      "label": "Cycling",
+      "rules": [
+        "Better gut tolerance — solid food (rice cakes, bars, banana + nut butter) works on the bike.",
+        "Higher absolute calorie burn per hour at the same RPE — often needs more total daily food than a runner of the same weight.",
+        "Long rides (3+ hours) require 90-120 g carbs/hour and explicit drink-mix recommendations.",
+        "Indoor trainer sessions: sweat rate 2-3x higher — triple electrolyte intake."
+      ]
+    },
+    "triathlon": {
+      "label": "Triathlon",
+      "rules": [
+        "Brick days (bike + run): apply long-day or two-a-day rules even if total duration is modest.",
+        "Race week: practise race-day fuelling in the final long brick — don't experiment on race day.",
+        "Multi-discipline weeks mean higher total volume — bias to the higher end of carb ranges.",
+        "Account for early-morning swim (often pre-breakfast) when planning breakfast and pre-workout fuelling."
+      ]
+    },
+    "swimming": {
+      "label": "Swimming",
+      "rules": [
+        "Cold water increases appetite — expect larger meals after pool sessions.",
+        "Chlorine + early starts suppress pre-workout appetite — default to a small carb-only snack 30 min before.",
+        "Glycogen demand is similar to running per minute of work — apply the same daily carb targets."
+      ]
+    },
+    "strength": {
+      "label": "Strength / combined",
+      "rules": [
+        "Higher protein target (1.8-2.4 g/kg).",
+        "Carbohydrates still matter — low-carb compromises performance and recovery.",
+        "Pre-workout meal 1-2 hours out with moderate carbs + protein.",
+        "Post-workout less time-critical than endurance, but eat within 1-2 hours.",
+        "Combined strength + endurance: schedule to avoid interference (strength after endurance, or 6+ hours apart)."
+      ]
+    }
+  },
+  "femaleAthlete": {
+    "follicularPhase": {
+      "notes": [
+        "Higher insulin sensitivity — carbs utilised more efficiently.",
+        "Easier fat access during low-intensity work.",
+        "Standard carb periodisation applies."
+      ]
+    },
+    "lutealPhase": {
+      "carbsIncreasePct": [5, 10],
+      "proteinAdditionGPerKg": [0.1, 0.2],
+      "notes": [
+        "Higher in-session carb needs — fuel from 45 min instead of 60.",
+        "Sleep often disrupted — pre-bed casein/Greek yoghurt + magnesium-rich foods.",
+        "PMS support: complex carbs, omega-3 sources, avoid heavy alcohol."
+      ]
+    },
+    "menstruation": {
+      "notes": [
+        "Iron focus — heavier flow means more iron loss; pair iron with vitamin C.",
+        "Avoid restriction/under-fuelling despite bloating discomfort.",
+        "Anti-inflammatory foods: berries, fatty fish, turmeric, ginger."
+      ]
+    },
+    "leaThresholdKcalPerKgFfm": 30,
+    "ironFocus": {
+      "foods": ["red meat", "liver", "oysters", "lentils", "fortified cereals", "dark leafy greens", "pumpkin seeds"],
+      "pairings": ["vitamin C (citrus, capsicum, tomato)"],
+      "avoidWithin1Hr": ["coffee", "tea"]
+    },
+    "boneHealth": {
+      "calciumMgPerDayMin": 1000,
+      "calciumMgPerDayMax": 1300,
+      "vitDIuMin": 600,
+      "vitDIuMax": 1000
+    }
+  },
+  "dietaryPatterns": {
+    "vegetarian": {
+      "label": "Vegetarian (dairy + eggs)",
+      "avoidFoods": ["meat", "fish"],
+      "specialNotes": [
+        "Protein from Greek yoghurt, eggs, cottage cheese, tofu, tempeh, legumes, quinoa.",
+        "Watch B12 and iron — fortified foods or supplements.",
+        "Combine plant proteins across the day (legumes + grains)."
+      ]
+    },
+    "vegan": {
+      "label": "Vegan",
+      "avoidFoods": ["all animal products"],
+      "specialNotes": [
+        "Protein target 1.8-2.2 g/kg (lower plant digestibility).",
+        "B12 supplementation required.",
+        "Pair non-heme iron with vitamin C; avoid tea/coffee with meals.",
+        "Omega-3 from flax/chia/walnuts; consider algae DHA. Creatine can help. Mind zinc/iodine."
+      ]
+    },
+    "gluten_free": {
+      "label": "Gluten-free",
+      "allowedFoods": ["rice", "certified GF oats", "potatoes", "sweet potatoes", "quinoa", "buckwheat", "GF pasta", "GF bread", "polenta", "corn tortillas"],
+      "avoidFoods": ["wheat", "barley", "rye"],
+      "specialNotes": ["Confirm gels and recovery drinks are GF — many contain wheat-derived ingredients."]
+    },
+    "dairy_free": {
+      "label": "Dairy-free",
+      "avoidFoods": ["dairy", "lactose"],
+      "specialNotes": [
+        "Protein from eggs, meat, fish, soy, legumes, plant protein powders.",
+        "Calcium from fortified plant milks, tofu, dark leafy greens, sardines, tahini.",
+        "Most Up&Go-style drinks contain dairy — use oat/soy alternatives. Watch hidden whey/casein."
+      ]
+    },
+    "ibs_low_fodmap": {
+      "label": "IBS-friendly / low FODMAP",
+      "allowedFoods": ["white rice", "oats (small portions)", "potatoes", "sourdough", "GF bread", "banana", "blueberries", "kiwi", "citrus"],
+      "avoidFoods": ["onion", "garlic", "wheat in large amounts", "chickpeas", "black beans", "apple", "pear", "mango", "watermelon", "lactose dairy"],
+      "specialNotes": ["Pre-race: only foods tested in training.", "Smaller, more frequent meals."]
+    }
+  },
+  "raceDay": {
+    "carbLoadingDaysOut": [2, 3],
+    "carbLoadingMultiplierMin": 10,
+    "carbLoadingMultiplierMax": 12,
+    "raceMorningHoursOut": [3, 4],
+    "duringRace": [
+      { "durationMin": 0, "durationMax": 60, "carbsPerHourMin": 0, "carbsPerHourMax": 0, "notes": "Mouth-rinse sports drink at 30 min; no calorie needs." },
+      { "durationMin": 60, "durationMax": 90, "carbsPerHourMin": 30, "carbsPerHourMax": 60, "notes": "If tolerated; water otherwise." },
+      { "durationMin": 90, "durationMax": 180, "carbsPerHourMin": 60, "carbsPerHourMax": 90, "notes": "Gels + sports drink." },
+      { "durationMin": 180, "durationMax": null, "carbsPerHourMin": 90, "carbsPerHourMax": 120, "notes": "Mix glucose + fructose (2:1); practise religiously in training." }
+    ]
+  },
+  "specialSituations": {
+    "illness": {
+      "label": "Illness",
+      "notes": [
+        "Maintain carb intake to support immune function.",
+        "Increase fluids; electrolytes if fever or GI symptoms.",
+        "Protein slightly higher (1.8-2.0 g/kg).",
+        "Broth, easy-to-digest carbs, Greek yoghurt, vitamin-C fruit, ginger, turmeric.",
+        "Avoid intense training while ill (a coaching call, not nutrition)."
+      ]
+    },
+    "travel": {
+      "label": "Travel days",
+      "notes": [
+        "Pack shelf-stable carbs + protein (nut-butter sandwiches, rice cakes, jerky, bars, fruit, hard-boiled eggs).",
+        "Hydrate: ~250 ml water per hour of flight.",
+        "Avoid alcohol on long flights.",
+        "Shift meal timing toward destination timezone 24-48 h pre-travel."
+      ]
+    },
+    "heat": {
+      "label": "Heat / humidity",
+      "notes": [
+        "Increase sodium 1000-2000 mg/day in heavy heat training.",
+        "Cold meals (overnight oats, smoothies, cold pasta salad) when heat suppresses appetite.",
+        "Pre-cool with ice slurries before sessions in extreme heat."
+      ]
+    },
+    "altitude": {
+      "label": "Altitude",
+      "notes": [
+        "Carb needs increase 15-25%.",
+        "Iron demand spikes — supplement only under medical supervision.",
+        "Add ~500 ml/day baseline for respiratory water loss.",
+        "Appetite often suppressed — emphasise palatable, calorie-dense foods."
+      ]
+    },
+    "tapering": {
+      "label": "Tapering",
+      "notes": [
+        "Don't drop calories proportionally to volume — glycogen storage rises during taper.",
+        "Maintain carbs within 10-15% of peak training values.",
+        "Slight protein (still >= 1.6 g/kg) and fat reduction is fine.",
+        "Don't experiment — every meal should be familiar."
+      ]
+    },
+    "strengthEnduranceMix": {
+      "label": "Strength + endurance same day",
+      "notes": [
+        "Treat as a high-demand day even if endurance volume is modest.",
+        "Minimum 6-8 g/kg carbs.",
+        "Protein bias toward the higher end (2.0+ g/kg).",
+        "Schedule carbs around both sessions — pre and post each."
+      ]
+    }
+  },
+  "hardConstraints": [
+    "Never recommend a plan with total daily energy below 30 kcal/kg fat-free mass (LEA).",
+    "Never recommend fasting or skipping meals around training as a fuelling strategy.",
+    "Never prescribe specific supplements/doses needing medical supervision (iron, high-dose vit D, ergogenics). Food sources + blood-test suggestions only.",
+    "Never recommend foods on the athlete's avoid list.",
+    "Never recommend any food the athlete has marked as an allergy.",
+    "Never use moralising language about food ('junk', 'guilty pleasure', 'cheat meal', 'earning calories').",
+    "Never recommend rapid weight-loss strategies (max 0.3-0.5% bodyweight/week).",
+    "Never suggest untested new fuels or strategies for race day.",
+    "Never make medical diagnoses — refer to a sports dietitian, GP, or sports physician."
+  ],
+  "formattingRules": {
+    "ingredientSeparator": ", ",
+    "quantityFormat": "× N with the multiplication sign and a leading space; omit when N = 1",
+    "substitutionFormat": "/ with no spaces",
+    "caseStyle": "Sentence case",
+    "maxFoodStringLength": 60,
+    "examples": [
+      { "slot": "Breakfast", "example": "Oats, banana, yoghurt, honey" },
+      { "slot": "Post-AM single", "example": "Rokeby/Up&Go" },
+      { "slot": "Post-AM double", "example": "Rokeby/Up&Go × 2" },
+      { "slot": "Lunch", "example": "Smoothie, wrap, eggs/chicken" },
+      { "slot": "Afternoon", "example": "Toast × 2, nut butter, banana" },
+      { "slot": "Dinner", "example": "Chicken/beef, rice/potatoes, broccoli" }
+    ]
+  }
+}
