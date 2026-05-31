@@ -43,6 +43,10 @@ export function FoodPrefsStep({ value, onChange }: Props) {
 
   return (
     <div className="space-y-6">
+      <p className="text-body-sm text-ink-tertiary leading-relaxed">
+        Tap a suggestion or type your own. Even a rough list sharpens the plan —
+        you can refine it anytime in Settings.
+      </p>
       <div className="space-y-5">
         {CHIP_FIELDS.map((f) => (
           <div key={f.key}>

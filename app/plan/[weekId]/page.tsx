@@ -19,7 +19,6 @@ import {
   type SessionType,
   type TrainingWeek,
 } from "@/lib/db";
-import { mockPlan } from "@/lib/mock";
 import {
   SESSION_LABELS,
   DEFAULT_CARB_TARGETS_G_PER_KG,
@@ -34,7 +33,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RegenerateDialog } from "@/components/plan/RegenerateDialog";
 import { CoachingRules } from "@/components/plan/CoachingRules";
 import { generateGroceryList } from "@/lib/groceryClient";
-import { LoadingState, ErrorBanner } from "@/components/shared/states";
+import { LoadingState, EmptyState, ErrorBanner } from "@/components/shared/states";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
@@ -83,7 +82,6 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
     const profile = (await db.profile.get("me")) ?? null;
     return { plan, training, profile };
   }, [weekId]);
-  const [seeding, setSeeding] = React.useState(false);
 
   if (data === undefined) return <LoadingState />;
   const { plan, training, profile } = data;
@@ -92,23 +90,17 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
     return (
       <main className="app-container py-12 max-w-2xl">
         <BackLink />
-        <h1 className="font-display text-display-lg text-ink mt-6">No plan yet</h1>
-        <p className="text-body-lg text-ink-secondary mt-3 mb-6">
-          AI plan generation lands in Phase 3. Seed a mock plan to click through.
-        </p>
-        <Button
-          disabled={seeding}
-          onClick={async () => {
-            setSeeding(true);
-            try {
-              await getDb().fuellingPlans.put(mockPlan(weekId));
-            } finally {
-              setSeeding(false);
+        <div className="mt-6">
+          <EmptyState
+            title="No plan for this week"
+            description="You haven't generated a fuelling plan for this week yet. Head to the dashboard to plan one — copy last week, adjust it, or generate fresh."
+            action={
+              <Link href="/dashboard">
+                <Button>Go to dashboard</Button>
+              </Link>
             }
-          }}
-        >
-          {seeding ? "Seeding…" : "Seed mock plan"}
-        </Button>
+          />
+        </div>
       </main>
     );
   }
