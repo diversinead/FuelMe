@@ -7,6 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Printer } from "lucide-react";
 import { getDb, type GroceryList } from "@/lib/db";
 import { generateGroceryList } from "@/lib/groceryClient";
+import { LoadingState, EmptyState, ErrorBanner } from "@/components/shared/states";
 import { formatWeekRange } from "@/lib/date";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -21,7 +22,7 @@ export default function GroceryPage({ params }: { params: { weekId: string } }) 
     [weekId],
   );
 
-  if (list === undefined) return <Loading />;
+  if (list === undefined) return <LoadingState />;
 
   if (list === null) {
     return <GroceryEmptyState weekId={weekId} />;
@@ -53,28 +54,20 @@ function GroceryEmptyState({ weekId }: { weekId: string }) {
   return (
     <main className="app-container py-12 max-w-2xl">
       <BackLink weekId={weekId} />
-      <h1 className="font-display text-display-lg text-ink mt-6">
-        No grocery list yet
-      </h1>
-      <p className="text-body-lg text-ink-secondary mt-3 mb-6">
-        Generate a shopping list from this week&apos;s fuelling plan. Takes a
-        few seconds.
-      </p>
-      {error && (
-        <div
-          className="mb-4 p-3 rounded-button"
-          style={{
-            border:
-              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
-            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-          }}
-        >
-          <p className="text-body-sm text-danger leading-snug">{error}</p>
-        </div>
-      )}
-      <Button onClick={generate} disabled={generating}>
-        {generating ? "Generating…" : "Generate grocery list"}
-      </Button>
+      <div className="mt-6">
+        <EmptyState
+          title="No grocery list yet"
+          description="Generate a shopping list from this week's fuelling plan. It builds instantly from the plan, then adds shopping tips."
+          action={
+            <>
+              {error && <ErrorBanner message={error} className="mb-4" />}
+              <Button onClick={generate} disabled={generating}>
+                {generating ? "Generating…" : "Generate grocery list"}
+              </Button>
+            </>
+          }
+        />
+      </div>
     </main>
   );
 }
@@ -288,12 +281,3 @@ function BackLink({ weekId }: { weekId: string }) {
   );
 }
 
-function Loading() {
-  return (
-    <main className="min-h-[60vh] flex items-center justify-center">
-      <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-        Loading…
-      </p>
-    </main>
-  );
-}

@@ -16,6 +16,7 @@ import {
   type PlannedMeal,
 } from "@/lib/db";
 import { formatWeekRange } from "@/lib/date";
+import { LoadingState, ErrorBanner } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -101,7 +102,7 @@ export default function CheckInPage({
     }
   }, [existing]);
 
-  if (plan === undefined || existing === undefined) return <Loading />;
+  if (plan === undefined || existing === undefined) return <LoadingState />;
 
   function buildCheckInPayload(preserveFeedback: boolean): CheckIn {
     return {
@@ -462,18 +463,7 @@ export default function CheckInPage({
       </div>
 
       {feedbackError && (
-        <div
-          className="mt-6 p-3 rounded-button"
-          style={{
-            border:
-              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
-            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-          }}
-        >
-          <p className="text-body-sm text-danger leading-snug">
-            {feedbackError}
-          </p>
-        </div>
+        <ErrorBanner message={feedbackError} onRetry={getFeedback} className="mt-6" />
       )}
 
       {existing?.aiFeedback && (
@@ -547,7 +537,7 @@ function FeedbackPanel({
                     The coach has flagged {feedback.suggestedPlanEdits.length}{" "}
                     meal slot{feedback.suggestedPlanEdits.length === 1 ? "" : "s"}
                     {" "}that would have worked better. Apply to overwrite those
-                    cells in this week's plan.
+                    cells in this week&apos;s plan.
                   </p>
                 </div>
                 <Button
@@ -650,15 +640,5 @@ function BackLink() {
     >
       <ArrowLeft size={12} /> Dashboard
     </Link>
-  );
-}
-
-function Loading() {
-  return (
-    <main className="min-h-[60vh] flex items-center justify-center">
-      <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-        Loading…
-      </p>
-    </main>
   );
 }

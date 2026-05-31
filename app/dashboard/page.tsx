@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/shared/SectionHeader";
 import { SessionTag } from "@/components/shared/SessionTag";
+import { LoadingState } from "@/components/shared/states";
 import {
   getDb,
   clonePlan,
@@ -67,7 +68,7 @@ export default function DashboardPage() {
     if (data && !data.profile) router.replace("/onboarding");
   }, [data, router]);
 
-  if (!data) return <DashLoading />;
+  if (!data) return <LoadingState />;
   if (!data.profile) return null;
 
   // Plan-for-current-week exists? Drives default chooser selection.
@@ -678,12 +679,3 @@ function StatCard({
   );
 }
 
-function DashLoading() {
-  return (
-    <main className="min-h-[60vh] flex items-center justify-center">
-      <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-        Loading…
-      </p>
-    </main>
-  );
-}

@@ -34,6 +34,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RegenerateDialog } from "@/components/plan/RegenerateDialog";
 import { CoachingRules } from "@/components/plan/CoachingRules";
 import { generateGroceryList } from "@/lib/groceryClient";
+import { LoadingState, ErrorBanner } from "@/components/shared/states";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
@@ -84,7 +85,7 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
   }, [weekId]);
   const [seeding, setSeeding] = React.useState(false);
 
-  if (data === undefined) return <Loading />;
+  if (data === undefined) return <LoadingState />;
   const { plan, training, profile } = data;
 
   if (plan === null) {
@@ -497,20 +498,7 @@ function PlanView({
         </Button>
       </div>
 
-      {groceryError && (
-        <div
-          className="mt-3 p-3 rounded-button"
-          style={{
-            border:
-              "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
-            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-          }}
-        >
-          <p className="text-body-sm text-danger leading-snug">
-            {groceryError}
-          </p>
-        </div>
-      )}
+      {groceryError && <ErrorBanner message={groceryError} className="mt-3" />}
 
       {/* Mobile: day-by-day */}
       <div className="md:hidden mt-7">
@@ -923,21 +911,7 @@ function PlanView({
                 </label>
               </div>
 
-              {editError && (
-                <div
-                  className="mt-4 p-3 rounded-button"
-                  style={{
-                    border:
-                      "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
-                    background:
-                      "color-mix(in srgb, var(--danger) 8%, transparent)",
-                  }}
-                >
-                  <p className="text-body-sm text-danger leading-snug">
-                    {editError}
-                  </p>
-                </div>
-              )}
+              {editError && <ErrorBanner message={editError} className="mt-4" />}
 
               <div className="mt-6 flex justify-end gap-2">
                 <Button
@@ -1147,12 +1121,3 @@ function BackLink() {
   );
 }
 
-function Loading() {
-  return (
-    <main className="min-h-[60vh] flex items-center justify-center">
-      <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-        Loading…
-      </p>
-    </main>
-  );
-}

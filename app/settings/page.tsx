@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { Card, CardLabel } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/shared/states";
 import { ProfileStep } from "@/components/onboarding/ProfileStep";
 import { FoodPrefsStep } from "@/components/onboarding/FoodPrefsStep";
 import { TrainingStep } from "@/components/onboarding/TrainingStep";
@@ -69,13 +70,7 @@ export default function SettingsPage() {
   }, [data]);
 
   if (!data || !profile || !foodPrefs || !trainingWeek) {
-    return (
-      <main className="min-h-[60vh] flex items-center justify-center">
-        <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-          Loading…
-        </p>
-      </main>
-    );
+    return <LoadingState />;
   }
 
   async function save() {

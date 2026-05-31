@@ -10,6 +10,7 @@ import {
   type NutritionRulesConfig,
 } from "@/lib/nutritionRulesSchema";
 import { SECTION_LABELS, SectionEditor } from "@/components/admin/Sections";
+import { LoadingState } from "@/components/shared/states";
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 const isProd = process.env.NODE_ENV === "production";
@@ -95,13 +96,7 @@ export default function AdminPage() {
   }
 
   if (status === "loading") {
-    return (
-      <main className="min-h-[60vh] flex items-center justify-center">
-        <p className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-          Loading…
-        </p>
-      </main>
-    );
+    return <LoadingState />;
   }
 
   if (status === "login") {
