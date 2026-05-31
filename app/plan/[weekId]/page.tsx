@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Printer, RefreshCw, ShoppingBag, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -130,6 +130,32 @@ function PlanView({
   );
 
   const [mobileDayIdx, setMobileDayIdx] = React.useState(0);
+  const reduceMotion = useReducedMotion();
+  // Direction of the last day change, so the incoming day slides in the right way.
+  const dayDir = React.useRef(0);
+  const activeTabRef = React.useRef<HTMLButtonElement | null>(null);
+  // Set true on a swipe so the follow-on click doesn't open a meal.
+  const swipedRef = React.useRef(false);
+  const swipeStartX = React.useRef(0);
+  const swipeStartY = React.useRef(0);
+
+  function goToDay(target: number) {
+    const clamped = Math.max(0, Math.min(DAYS.length - 1, target));
+    setMobileDayIdx((cur) => {
+      dayDir.current = clamped > cur ? 1 : clamped < cur ? -1 : 0;
+      return clamped;
+    });
+  }
+
+  // Keep the selected day's tab visible when navigating by swipe.
+  React.useEffect(() => {
+    activeTabRef.current?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [mobileDayIdx, reduceMotion]);
+
   const [regenOpen, setRegenOpen] = React.useState(false);
 
   // Editable target bands — defaults from NUTRITION_RULES.md, overrideable
@@ -224,6 +250,7 @@ function PlanView({
   }
 
   function openEdit(day: Day, slot: MealSlot) {
+    if (swipedRef.current) return; // a swipe just happened — don't open the editor
     const key = `${day}:${slot}`;
     const meal = mealLookup.get(key);
     setEditingKey(key);
@@ -500,13 +527,14 @@ function PlanView({
 
       {groceryError && <ErrorBanner message={groceryError} className="mt-3" />}
 
-      {/* Mobile: day-by-day */}
+      {/* Mobile: day-by-day, tap a tab or swipe left/right between days */}
       <div className="md:hidden mt-7">
         <div className="flex gap-2 overflow-x-auto pb-3 mb-4 -mx-5 px-5">
           {DAYS.map((d, i) => (
             <button
               key={d}
-              onClick={() => setMobileDayIdx(i)}
+              ref={i === mobileDayIdx ? activeTabRef : null}
+              onClick={() => goToDay(i)}
               className={cn(
                 "shrink-0 px-3 py-2 rounded-button font-mono text-mono-sm uppercase tracking-widest border transition-colors",
                 i === mobileDayIdx
@@ -518,7 +546,30 @@ function PlanView({
             </button>
           ))}
         </div>
-        <div className="space-y-3">
+        <motion.div
+          key={mobileDayIdx}
+          // Swipe via raw pointer events (not Framer drag, which would swallow
+          // the meal-card taps). A horizontal swipe changes the day and sets
+          // swipedRef so the follow-on click doesn't also open the editor;
+          // taps fall straight through to the card.
+          onPointerDown={(e) => {
+            swipeStartX.current = e.clientX;
+            swipeStartY.current = e.clientY;
+            swipedRef.current = false;
+          }}
+          onPointerUp={(e) => {
+            const dx = e.clientX - swipeStartX.current;
+            const dy = e.clientY - swipeStartY.current;
+            if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+              swipedRef.current = true;
+              goToDay(mobileDayIdx + (dx < 0 ? 1 : -1));
+            }
+          }}
+          initial={reduceMotion ? false : { opacity: 0, x: dayDir.current * 28 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.2, ease: ease.out }}
+          className="space-y-3 touch-pan-y"
+        >
           {SLOTS.map((row) => (
             <MealCard
               key={row.slot}
@@ -530,7 +581,7 @@ function PlanView({
           <DayTotalRow
             total={plan.dayTotals.find((t) => t.day === DAYS[mobileDayIdx])}
           />
-        </div>
+        </motion.div>
       </div>
 
       {/* Desktop grid */}
