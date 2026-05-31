@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from "@/lib/openai";
 import { PLAN_SYSTEM_PROMPT } from "@/lib/prompts";
+import { criteriaForIds } from "@/lib/coachingCriteria";
 import type { FuellingPlan } from "@/lib/db";
 
 // Force the Node runtime — the openai SDK uses APIs not present on Edge.
@@ -15,6 +16,22 @@ interface PlanRequestBody {
   baselinePlan?: unknown;
   carbTargetsGperKg?: { easy?: [number, number]; hard?: [number, number] };
   proteinTargetGperKg?: [number, number];
+  selectedCriteria?: string[];
+}
+
+// Build the system prompt, appending any user-selected coaching emphasis.
+function buildSystemPrompt(selectedCriteria: string[] | undefined): string {
+  const criteria = criteriaForIds(selectedCriteria);
+  if (criteria.length === 0) return PLAN_SYSTEM_PROMPT;
+  const lines = criteria
+    .map((c) => `- ${c.label}: ${c.promptGuidance}`)
+    .join("\n");
+  return `${PLAN_SYSTEM_PROMPT}
+
+# Additional emphasis this week (user-selected priorities)
+
+Apply these on top of everything above. They are the athlete's explicit focus for this plan:
+${lines}`;
 }
 
 function isValidBody(body: unknown): body is PlanRequestBody {
@@ -55,12 +72,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    const selectedCriteria = (body as PlanRequestBody).selectedCriteria;
+    const matchedCriteria = criteriaForIds(selectedCriteria).map((c) => c.id);
+
     const completion = await openai.chat.completions.create({
       model: OPENAI_MODEL,
       temperature: OPENAI_TEMPERATURE,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: PLAN_SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(selectedCriteria) },
         { role: "user", content: JSON.stringify(body) },
       ],
     });
@@ -85,8 +105,9 @@ export async function POST(req: Request) {
 
     // The client adds id, weekId, generatedAt before persisting to Dexie
     // (per SPEC §5.1: "Returns a structured FuellingPlan (without id/weekId
-    // — client adds those)").
-    return NextResponse.json(parsed);
+    // — client adds those)"). Echo back the matched coaching criteria so the
+    // client can store them on the plan record.
+    return NextResponse.json({ ...parsed, appliedCriteria: matchedCriteria });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[/api/plan] OpenAI call failed:", e);

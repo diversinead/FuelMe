@@ -70,9 +70,9 @@ For athlete bodyweight `W` kg, daily carbs in grams = `W × multiplier`:
 
 ### Step 3 — Apply the preload rule
 
-If tomorrow is LONG, DOUBLE, or RACE: add `(W × 1)` to `(W × 2)` grams of extra carbs to today's dinner. Reduce fibre and fat in that dinner.
+If tomorrow is LONG, HARD, or RACE: add `(W × 1)` to `(W × 2)` grams of extra carbs to today's dinner. Reduce fibre and fat in that dinner.
 
-- Friday dinner before Saturday long run → larger rice/pasta portion, lower-fibre vegetables (zucchini, carrots over broccoli/kale), no large salads
+- Saturday dinner before Sunday long run → larger rice/pasta portion, lower-fibre vegetables (zucchini, carrots over broccoli/kale), no large salads
 - Avoid new foods or high-fat meals (curries, fried food) the night before a long effort
 
 ### Step 4 — Apply the minimum-variance rule (CRITICAL)
@@ -460,6 +460,7 @@ The AI must never:
 
 These apply to the `food` string field in any generated plan:
 
+- **Name concrete foods the athlete actually eats.** Compose every meal from the athlete's `foodPreferences` lists (breakfastOptions, proteinSources, carbSources, fruits, vegetables, snacks, drinks). Never output a generic placeholder like `"Protein"`, `"Veg"`, `"Carbs"`, or `"Protein source"` — always resolve it to a specific listed item. Vary the named protein and carb across the week so dinners aren't identical every day.
 - Use commas as the only separator between ingredients: `"Oats, banana, yoghurt, honey"`. Never `+`, `w/`, `&`, `and`, or mixed connectors.
 - For quantities, use `× N` with the multiplication sign and a space: `"Toast × 2"`, `"Rokeby × 2"`. Wrong: `"1× Rokeby"`, `"(2)"`, `"2 Rokeby"`.
 - Quantity of one: omit the multiplier. `"Rokeby"` not `"Rokeby × 1"`.
@@ -474,7 +475,7 @@ These apply to the `food` string field in any generated plan:
 - Post-AM double: `"Rokeby/Up&Go × 2"`
 - Lunch: `"Smoothie, wrap, eggs/chicken"`
 - Afternoon: `"Toast × 2, nut butter, banana"`
-- Dinner: `"Protein, rice/potatoes, veg"`
+- Dinner: `"Chicken/beef, rice/potatoes, broccoli"` (concrete foods from the athlete's lists — never `"Protein, rice/potatoes, veg"`)
 
 ---
 

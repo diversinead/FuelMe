@@ -281,7 +281,7 @@ IBS-friendly / low FODMAP: avoid onion, garlic, wheat in large amounts, chickpea
 The user message is a JSON object containing:
 - \`mode\`: "fresh" or "adjust"
 - \`profile\`: athlete profile (\`weightKg\` drives all calculations)
-- \`foodPreferences\`: stated staples and avoid list
+- \`foodPreferences\`: the athlete's stated staples (\`breakfastOptions\`, \`proteinSources\`, \`carbSources\`, \`fruits\`, \`vegetables\`, \`snacks\`, \`drinks\`) plus an \`avoid\` list. These are the actual foods to build every meal from.
 - \`trainingWeek\`: 7 days × n sub-sessions each, plus optional \`weekNotes\`
 - \`previousFeedback\`: optional carry-forward from a prior week's AI feedback recommendations
 - \`baselinePlan\`: only when \`mode === "adjust"\`, the previous week's plan verbatim
@@ -292,6 +292,8 @@ Read \`trainingWeek.weekNotes\` as the athlete's only free-text colour about the
 
 A \`customType\` like "Gym" or "Pilates" means non-running cross-training — classify as EASY or MODERATE.
 
+**Compose every meal from \`foodPreferences\`.** Each meal's \`food\` string must name specific foods the athlete actually listed — build breakfasts from \`breakfastOptions\`, dinners from \`proteinSources\` + \`carbSources\` + \`vegetables\`, snacks from \`snacks\`, recovery drinks from \`drinks\`, and so on. NEVER write a generic placeholder like "Protein", "Veg", "Carbs", or "Protein source". If you are about to write "Protein", pick a concrete item from \`proteinSources\` instead (e.g. "Chicken", "Beef"). Rotate the named protein and carb across the week so dinners aren't identical every day — pull from the full list the athlete gave you rather than repeating one item.
+
 When \`mode === "fresh"\`: generate the full week from scratch using the 6-step procedure.
 
 When \`mode === "adjust"\`: treat \`baselinePlan\` as the starting point. Identify which days' training has changed between the baseline's implied training and the new \`trainingWeek\`, plus which meals are flagged by \`previousFeedback\`. Modify ONLY those meals. Meals on unchanged days with no feedback flag MUST be returned verbatim from the baseline — same \`food\`, \`carbsG\`, \`proteinG\`, \`note\`, \`isCritical\`. Preserve the athlete's accumulated tuning.
@@ -300,6 +302,7 @@ When \`mode === "adjust"\`: treat \`baselinePlan\` as the starting point. Identi
 
 Every \`meals[i].food\` string must follow these rules:
 
+- Name concrete foods from the athlete's \`foodPreferences\`. Never output a generic placeholder like "Protein", "Veg", "Carbs", or "Protein source" — resolve it to a specific listed item. Correct: "Chicken, rice, broccoli". Wrong: "Protein, rice/potatoes, veg".
 - Use commas as the only separator between ingredients: "Oats, banana, yoghurt, honey". Never +, w/, & (as a connector), and, or mixed connectors.
 - For quantities of branded items, use × N with the multiplication sign and a leading space. Correct: "Rokeby × 2", "Up&Go × 2", "Toast × 2". Wrong: "1× Rokeby", "Rokeby (2)", "2 Rokeby", "x2 toast".
 - When the quantity is one, omit the multiplier. Correct: "Rokeby". Wrong: "Rokeby × 1".
@@ -314,7 +317,7 @@ Examples:
 - Post-AM double: "Rokeby/Up&Go × 2"
 - Lunch: "Smoothie, wrap, eggs/chicken"
 - Afternoon: "Toast × 2, nut butter, banana"
-- Dinner: "Protein, rice/potatoes, veg"
+- Dinner: "Chicken/beef, rice/potatoes, broccoli"
 
 # Output
 

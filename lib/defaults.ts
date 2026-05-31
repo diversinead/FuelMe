@@ -102,7 +102,11 @@ export function newSubSession(partial: Partial<SubSession> = {}): SubSession {
   return {
     id: subSessionId(),
     label: partial.label,
+    // `type` keeps a safe fallback, but when the caller didn't choose one we
+    // mark it unset so the form shows a blank type field (not a pre-filled
+    // "Easy", which reads as a recommendation).
     type: partial.type ?? "easy",
+    typeUnset: partial.type === undefined ? true : partial.typeUnset,
     customType: partial.customType,
     distanceKm: partial.distanceKm,
     durationMin: partial.durationMin,
@@ -116,7 +120,10 @@ function fmtKm(km: number): string {
 export function describeSub(s: SubSession): string {
   const parts: string[] = [];
   if (s.label?.trim()) parts.push(s.label.trim());
-  parts.push(s.customType?.trim() || SESSION_LABELS[s.type]);
+  // Don't claim "Easy" for a session whose type the athlete hasn't set.
+  parts.push(
+    s.customType?.trim() || (s.typeUnset ? "Session" : SESSION_LABELS[s.type]),
+  );
   if (s.distanceKm != null) parts.push(fmtKm(s.distanceKm));
   if (s.durationMin != null) parts.push(`${s.durationMin} min`);
   return parts.join(" ");

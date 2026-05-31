@@ -74,9 +74,9 @@ Each item below is queued. Work through one at a time, top-down. After
 the user confirms an item works, delete its bullet from this list.
 
 - **Bug:** Grocery list generation fails with "Request timed out."
-- **Bug:** regenerated plan produces generic dinners like "Rice,
-  vegetables, protein" every day, even though the profile has specific
-  protein sources (chicken, beef, etc.) in food preferences.
+  - **Bug:** regenerated plan produces generic dinners like "Rice,
+    vegetables, protein" every day, even though the profile has specific
+    protein sources (chicken, beef, etc.) in food preferences.
 - **UI tweak:** change the "RACE" session pill colour to gold/amber so
   it's visually distinct from HARD sessions.
 - **Bug:** the distance input field in the training entry form caps at
@@ -109,6 +109,36 @@ further.
 - Manual meal edits don't bump the plan's `generatedAt`; the smart
   Grocery freshness check only triggers regenerate after a `/api/plan`
   call. Flag if users complain.
+
+## Plan accuracy — dedicated fine-tuning pass (DEFERRED, high priority)
+
+The athlete flagged this as the single most important part of the app; we
+agreed to defer it to a focused pass after the pending-updates queue, with
+significant time budgeted. These are AI/prompt-quality issues in
+`/api/plan` (the grid renders the model's `dayTotals`/`carbsG` verbatim, so
+these are generation problems, not rendering bugs). Source → code:
+fixes flow through NUTRITION_RULES.md (+ SPEC Appendix A) then `lib/prompts.ts`.
+
+Observed 30-05-2026 on a regenerated plan:
+- **Within-day distribution broken** — a single meal can carry the entire
+  day's carbs (e.g. Monday breakfast 350 g while the day total is also
+  350 g). Step 5 percentages (breakfast 20-25%, etc.) are being ignored.
+- **No periodisation nuance** — every Easy day is a flat identical total
+  (350) and every Hard day a flat identical total (490). The prompt's
+  Step 2 "two values for the whole week — that's it" over-flattened and
+  now contradicts NUTRITION_RULES Step 3 (preload) and the post-session
+  recovery rules.
+- **No post-session recovery emphasis** — hard/long days don't show the
+  elevated carbs+protein in the post-session meal (NUTRITION_RULES §5,
+  W×1.0-1.2 carbs + W×0.3 protein within 30 min).
+- **No preload-the-night-before** — dinner the evening before a hard/long/
+  race day isn't carb-loaded (NUTRITION_RULES Step 3).
+- Carb totals also read as high/blunt — revisit once the above land.
+- Consider whether temperature 0.2 is too low (biases toward repetition);
+  the SPEC says 0.5.
+
+Keep the 2-band Targets UI contract intact — the bands set each day's
+baseline; layer distribution + preload + recovery nuance on top.
 
 ## Next phase (after the pending-updates list is empty)
 

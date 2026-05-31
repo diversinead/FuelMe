@@ -50,7 +50,9 @@ export function TrainingStep({ value, onChange }: Props) {
     }
     const nextSessions = [
       ...normalized,
-      newSubSession({ label: defaultLabel, type: "easy" }),
+      // No type — the athlete picks one. Leaving it unset keeps the Type field
+      // blank rather than pre-filling "Easy".
+      newSubSession({ label: defaultLabel }),
     ];
     updateDay(idx, reconcileDaySession({ ...day, sessions: nextSessions }));
   }
@@ -155,6 +157,7 @@ function DayCard({
                   key={s.id}
                   type={s.type}
                   customLabel={s.customType}
+                  unset={s.typeUnset}
                 />
               ))
             )}
@@ -446,7 +449,11 @@ function TypeInput({
     return m;
   }, []);
 
-  const external = session.customType ?? SESSION_LABELS[session.type];
+  // Unset sessions show a blank field (placeholder only) — never a pre-filled
+  // "Easy", which reads as a recommendation.
+  const external = session.typeUnset
+    ? ""
+    : (session.customType ?? SESSION_LABELS[session.type]);
   const [draft, setDraft] = React.useState(external);
   const focusedRef = React.useRef(false);
 
@@ -458,17 +465,18 @@ function TypeInput({
   function commit() {
     const value = draft.trim();
     if (!value) {
-      // Fall back to "Easy" rather than letting the field go blank.
-      onUpdate({ type: "easy", customType: undefined });
-      setDraft(SESSION_LABELS["easy"]);
+      // Leave the type unset rather than defaulting to "Easy" — a blank field
+      // means the athlete hasn't chosen yet, not that the session is easy.
+      onUpdate({ typeUnset: true });
+      setDraft("");
       return;
     }
     const preset = presetByLabel.get(value.toLowerCase());
     if (preset) {
-      onUpdate({ type: preset, customType: undefined });
+      onUpdate({ type: preset, customType: undefined, typeUnset: false });
       setDraft(SESSION_LABELS[preset]);
     } else {
-      onUpdate({ type: "cross", customType: value });
+      onUpdate({ type: "cross", customType: value, typeUnset: false });
     }
   }
 

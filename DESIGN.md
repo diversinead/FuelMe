@@ -55,6 +55,7 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --session-long: #2563eb;       /* blue-600 — long runs */
   --session-rest: #6b7280;       /* gray-500 — rest days */
   --session-custom: #f97316;     /* orange — free-text customType (Gym, Pilates, …) */
+  --session-race: #eab308;       /* gold — race days, distinct from hard red */
 
   /* Macro accents — used inline in the plan grid (no chip background) */
   --macro-carbs: #FAC775;        /* warm amber */
@@ -67,6 +68,8 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --session-pill-hard-fg: #fca5a5;
   --session-pill-long-bg: rgba(37, 99, 235, 0.18);
   --session-pill-long-fg: #93c5fd;
+  --session-pill-race-bg: rgba(234, 179, 8, 0.18);
+  --session-pill-race-fg: #fde047;
 
   /* Functional */
   --success: #10b981;
@@ -108,6 +111,7 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --session-long: #1d4ed8;
   --session-rest: #57534e;
   --session-custom: #ea580c;
+  --session-race: #a16207;
 
   --macro-carbs: #BA7517;
   --macro-protein: #0F6E56;
@@ -118,6 +122,8 @@ Add these to `globals.css`. Replace any existing CSS variables for the app shell
   --session-pill-hard-fg:    #791F1F;
   --session-pill-long-bg:    #E6F1FB;
   --session-pill-long-fg:    #0C447C;
+  --session-pill-race-bg:    #FBF1CC;
+  --session-pill-race-fg:    #6B4E00;
 
   --border-subtle: #00000008;
   --border-default: #00000010;
@@ -233,10 +239,11 @@ Headings use `font-display`. Body uses `font-body`. All numbers, badges, time st
 
 ### Session tags (per-sub-session colour pills)
 - Used by `SessionTag` in: dashboard hero day chips, training-editor day card headers, plan-grid day-header row (via `SessionPill` variant mapping)
-- Five variants driven by `SubSession.type` (plus `customLabel` for free-text `customType`):
+- Six variants driven by `SubSession.type` (plus `customLabel` for free-text `customType`):
   - **Easy** / `cross`: background `--session-easy` at 15% opacity, text `--session-easy`, border `1px solid currentColor` at 30%
-  - **Hard** (intervals / threshold / tempo / race): same pattern with `--session-hard`
+  - **Hard** (intervals / threshold / tempo): same pattern with `--session-hard`
   - **Long**: same pattern with `--session-long`
+  - **Race**: same pattern with `--session-race` — gold, visually distinct from hard
   - **Rest**: same pattern with `--session-rest`
   - **Custom** (anything with `customType` set, e.g. "Gym"): same pattern with `--session-custom` — orange. Renders the free-text label instead of the preset name.
 - `font-mono`, 10px, uppercase, letter-spacing 0.08em
@@ -252,7 +259,7 @@ Headings use `font-display`. Body uses `font-body`. All numbers, badges, time st
 ### Session pills (plan-grid day header)
 - Used only in the plan-grid day-header row to indicate the day's session intensity
 - Variant + label are **derived from the day's `TrainingWeek.sessions[].type`** (via `pillVariantForType` + `SESSION_LABELS`), not from `DayTotal.tag`. This means the header shows the specific session name ("Intervals", "Long Run", "Threshold") rather than the broad bucket — and a single-session day with `customType` set shows that custom label.
-- Three colour variants — neutral (rest / easy / easy_double / cross), hard (intervals / threshold / tempo / race), long (long)
+- Four colour variants — neutral (rest / easy / easy_double / cross), hard (intervals / threshold / tempo), long (long), race (race) — race is gold, distinct from hard
 - Each uses paired `--session-pill-{variant}-bg` and `--session-pill-{variant}-fg` tokens
 - `font-mono`, 10px, uppercase, letter-spacing 0.08em, padding `1px 6px`, radius `3px`
 - Distinct from `SessionTag` (used in the dashboard hero day-chip column + training editor for per-sub-session colour-coding)

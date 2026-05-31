@@ -52,6 +52,11 @@ export interface SubSession {
   id: string;
   label?: string;          // e.g. "AM", "PM", "Track"
   type: SessionType;
+  // True when the athlete hasn't picked a type yet (freshly added session).
+  // `type` still carries a safe fallback ("easy") for derivation/AI, but the
+  // form shows a blank field and chips show "Set type" rather than "Easy".
+  // Undefined on existing/typed data — treated as typed.
+  typeUnset?: boolean;
   customType?: string;     // free-text override (e.g. "Gym chest day"); takes precedence over type label
   distanceKm?: number;     // primary fuelling signal
   durationMin?: number;    // secondary context
@@ -108,6 +113,10 @@ export interface FuellingPlan {
   meals: PlannedMeal[];
   dayTotals: DayTotal[];
   manuallyEdited?: boolean;
+  // CoachingCriterion ids active when this plan was generated (Regenerate
+  // dialog). Undefined on plans made before the feature; renders as no
+  // coaching rules. Not an index — no schema migration needed.
+  appliedCriteria?: string[];
 }
 
 // ---------- Grocery list ----------

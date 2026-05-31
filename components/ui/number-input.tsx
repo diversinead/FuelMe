@@ -68,10 +68,22 @@ export function NumberInput({
     if (clamped !== n) setDraft(String(clamped));
   }
 
+  // Step from what's currently shown in the field (the draft), not the prop
+  // `value`. Otherwise a number the user typed but hasn't committed yet (no
+  // blur/Enter) is ignored, and the stepper snaps back to the last committed
+  // value — e.g. type 18 over a preset's 10 km, click ↑, and it becomes 10.5.
+  function currentBase(): number {
+    const trimmed = draft.trim();
+    if (trimmed !== "") {
+      const n = Number(trimmed);
+      if (!Number.isNaN(n)) return n;
+    }
+    return value ?? min ?? 0;
+  }
+
   function stepBy(delta: number) {
     if (disabled) return;
-    const base = value ?? (Number(draft) || min || 0);
-    const next = clamp(base + delta, min, max);
+    const next = clamp(currentBase() + delta, min, max);
     onChange(next);
     setDraft(String(next));
   }
@@ -134,8 +146,9 @@ export function NumberInput({
     );
   }
 
-  const atMin = min !== undefined && (value ?? (Number(draft) || 0)) <= min;
-  const atMax = max !== undefined && (value ?? (Number(draft) || 0)) >= max;
+  const effective = currentBase();
+  const atMin = min !== undefined && effective <= min;
+  const atMax = max !== undefined && effective >= max;
 
   const arrowBtn =
     "flex-1 inline-flex items-center justify-center w-7 text-ink-secondary " +

@@ -333,6 +333,46 @@ Same minimal language as the plan view — single-column scannable list, no card
 
 **Print route `/grocery/[weekId]/print`:** ports the same layout to A4 portrait via `@page` rules. White paper, two-column CSS columns for categories so the page packs efficiently, macro check section forced onto a new page via `page-break-before: always`. Filled black checkbox squares with a tick when `it.checked === true`. Triggers `window.print()` on mount if `?auto=1`.
 
+#### 4.4.1
+### 4.4.1 Grocery list generation strategy (hybrid)
+
+Grocery list generation uses a **hybrid local + AI approach** instead of pure AI:
+
+**Local (deterministic) handles:**
+- Parsing food strings into ingredients
+- Aggregating quantities across the week
+- Categorising known foods via a metadata table (`lib/foodMetadata.ts`)
+- Computing realistic purchase units
+
+**AI handles only:**
+- Categorising foods not in the metadata table
+- Generating 2-4 contextual coaching notes for the week
+
+**Why:** Reliability (no timeouts), speed (sub-second for known foods), cost (negligible AI usage), and works offline. AI failure degrades gracefully — list still works, just without coaching notes.
+
+**Food metadata table shape:**
+```ts
+// lib/foodMetadata.ts
+interface FoodMetadata {
+  category: 'Carbs & Grains' | 'Protein Drinks' | 'Fruit' | 'Dairy'
+          | 'Eggs & Lean Protein' | 'Vegetables' | 'Spreads & Extras';
+  portion: string;     // typical serving, e.g. '50g', '1', '150g'
+  unit: 'g' | 'count' | 'ml';
+  packSize?: number;   // realistic purchase unit
+}
+
+export const FOOD_METADATA: Record<string, FoodMetadata> = {
+  'oats': { category: 'Carbs & Grains', portion: '50g', unit: 'g', packSize: 500 },
+  // ... seeded over time from foods that appear in generated plans
+};
+```
+
+**Build order:**
+1. Phase 4: ship full-AI grocery generation (current plan). Add `maxDuration = 60` to the route and explicit timeout to the OpenAI client to fix current timeout issue.
+2. Phase 6: refactor to hybrid. Seed metadata table from foods observed in real plans during Phases 4-5.
+
+**Future fallback:** AI generation remains available as a fallback for unknown foods indefinitely.
+
 ### 4.5 Check-in (`/checkin/[weekId]`)
 
 - Compact recap of the plan
@@ -557,6 +597,7 @@ Sits between grocery generation (Phase 4) and the check-in loop (Phase 5). Lets 
 21. Empty states, loading states, error toasts
 22. Mobile QA — the print views are landscape A4, but the on-screen plan view needs a horizontally-scrollable variant on narrow viewports
 23. Light onboarding empty-state copy
+24. Refactor grocery list generation to hybrid local + AI per §4.4.1. Seed `lib/foodMetadata.ts` from foods observed in real generated plans.
 
 ### Phase 7 (later) — Cloud sync + BYO key
 - Add Supabase (auth + Postgres tables mirroring Dexie schema)
@@ -595,6 +636,7 @@ The runtime system prompt lives in `lib/prompts.ts` as `PLAN_SYSTEM_PROMPT`. Two
 
 **Food string formatting** (applied to every `meals[i].food` in the output):
 
+- **Name concrete foods from the athlete's `foodPreferences`.** Compose meals from the athlete's stated lists (proteinSources, carbSources, fruits, vegetables, breakfastOptions, snacks, drinks) and never emit a generic placeholder like `"Protein"`, `"Veg"`, or `"Carbs"`. Correct: `"Chicken, rice, broccoli"`. Wrong: `"Protein, rice/potatoes, veg"`. This keeps plans actionable and grocery lists shoppable. Use `/` to offer the athlete's own alternatives (`"chicken/beef"`).
 - Use commas as the only separator between ingredients. Correct: `"Oats, banana, yoghurt, honey"`. Never use `+`, `w/`, `&` (as a connector), `and`, or mixed connectors.
 - For quantities of branded items, use `× N` with the multiplication sign and a leading space, never parentheses or `x` or `*`. Correct: `"Rokeby × 2"`, `"Up&Go × 2"`, `"Toast × 2"`. Wrong: `"1× Rokeby"`, `"Rokeby (2)"`, `"2 Rokeby"`, `"x2 toast"`.
 - When the quantity is one, omit the multiplier entirely. Correct: `"Rokeby"`. Wrong: `"1× Rokeby"`, `"Rokeby × 1"`.

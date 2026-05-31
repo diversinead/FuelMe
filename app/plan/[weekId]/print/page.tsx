@@ -26,14 +26,14 @@ const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: "dinner",    label: "Dinner" },
 ];
 
-type PillVariant = "neutral" | "hard" | "long";
+type PillVariant = "neutral" | "hard" | "long" | "race";
 
 function pillVariantForType(type: SessionType | undefined): PillVariant {
+  if (type === "race") return "race"; // gold — distinct from hard red
   if (
     type === "intervals" ||
     type === "threshold" ||
-    type === "tempo" ||
-    type === "race"
+    type === "tempo"
   ) {
     return "hard";
   }

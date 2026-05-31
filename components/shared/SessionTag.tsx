@@ -1,7 +1,7 @@
 import type { SessionType } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
-const VARIANT: Record<SessionType, "easy" | "hard" | "long" | "rest"> = {
+const VARIANT: Record<SessionType, "easy" | "hard" | "long" | "rest" | "race"> = {
   rest: "rest",
   easy: "easy",
   easy_double: "easy",
@@ -9,7 +9,7 @@ const VARIANT: Record<SessionType, "easy" | "hard" | "long" | "rest"> = {
   threshold: "hard",
   tempo: "hard",
   long: "long",
-  race: "hard",
+  race: "race",
   cross: "easy",
 };
 
@@ -35,16 +35,24 @@ const LABEL: Record<SessionType, string> = {
 export function SessionTag({
   type,
   customLabel,
+  unset,
   className,
 }: {
   type: SessionType;
   customLabel?: string;
+  /** No type chosen yet — render a muted "Set type" pill, not the type label. */
+  unset?: boolean;
   className?: string;
 }) {
   const label = customLabel?.trim();
   if (label) {
     return (
       <span className={cn("session-tag custom", className)}>{label}</span>
+    );
+  }
+  if (unset) {
+    return (
+      <span className={cn("session-tag rest", className)}>Set type</span>
     );
   }
   return (

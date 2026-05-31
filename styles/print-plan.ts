@@ -25,6 +25,8 @@ export const planPrintCss = `
   --session-pill-hard-fg: #791F1F;
   --session-pill-long-bg: #E6F1FB;
   --session-pill-long-fg: #0C447C;
+  --session-pill-race-bg: #FBF1CC;
+  --session-pill-race-fg: #6B4E00;
 
   width: 100%;
   margin: 0 auto;
@@ -140,6 +142,10 @@ export const planPrintCss = `
 .sheet .session-pill.long {
   background: var(--session-pill-long-bg);
   color: var(--session-pill-long-fg);
+}
+.sheet .session-pill.race {
+  background: var(--session-pill-race-bg);
+  color: var(--session-pill-race-fg);
 }
 
 .sheet .slot-label,

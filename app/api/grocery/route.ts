@@ -5,6 +5,22 @@ import type { GroceryList } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+// Give the platform headroom for the OpenAI call. Without this, some hosts
+// (Vercel) cap serverless functions at ~10s and kill the request mid-generation.
+// Per SPEC §4.4.1 build order (Phase 4 interim, before the hybrid refactor).
+export const maxDuration = 60;
+
+// Per-request bound on the OpenAI call. The SDK default is a 10-minute timeout,
+// so a stalled generation hangs for the full 10 min before surfacing
+// "Request timed out." — the bug this route was reported with. Capping the
+// request at 50s (within the 60s function budget) surfaces a clear error
+// quickly instead of hanging.
+const GROCERY_REQUEST_TIMEOUT_MS = 50_000;
+
+// A full week's grocery list fits comfortably under this. Bounding output tokens
+// stops a runaway generation from being the thing that stalls the request.
+const GROCERY_MAX_TOKENS = 4096;
+
 interface GroceryRequestBody {
   fuellingPlan: unknown;
   foodPreferences: unknown;
@@ -48,15 +64,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      temperature: OPENAI_TEMPERATURE,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: GROCERY_SYSTEM_PROMPT },
-        { role: "user", content: JSON.stringify(body) },
-      ],
-    });
+    const completion = await openai.chat.completions.create(
+      {
+        model: OPENAI_MODEL,
+        temperature: OPENAI_TEMPERATURE,
+        max_tokens: GROCERY_MAX_TOKENS,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: GROCERY_SYSTEM_PROMPT },
+          { role: "user", content: JSON.stringify(body) },
+        ],
+      },
+      { timeout: GROCERY_REQUEST_TIMEOUT_MS },
+    );
 
     const raw = completion.choices[0]?.message?.content;
     if (!raw) {

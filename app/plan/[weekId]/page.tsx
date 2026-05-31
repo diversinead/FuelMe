@@ -30,8 +30,9 @@ import { Card, CardLabel } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RegenerateDialog } from "@/components/plan/RegenerateDialog";
+import { CoachingRules } from "@/components/plan/CoachingRules";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
@@ -44,15 +45,15 @@ const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: "dinner",    label: "Dinner" },
 ];
 
-type PillVariant = "neutral" | "hard" | "long";
+type PillVariant = "neutral" | "hard" | "long" | "race";
 
 // Pill variant from the actual SessionType (not the broad DayTotal.tag bucket).
 function pillVariantForType(type: SessionType | undefined): PillVariant {
+  if (type === "race") return "race"; // gold — distinct from hard red
   if (
     type === "intervals" ||
     type === "threshold" ||
-    type === "tempo" ||
-    type === "race"
+    type === "tempo"
   ) {
     return "hard";
   }
@@ -113,8 +114,6 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
   return <PlanView plan={plan} training={training} profile={profile} />;
 }
 
-type RegenReason = "training" | "prefs" | "retry";
-
 function PlanView({
   plan,
   training,
@@ -130,8 +129,6 @@ function PlanView({
 
   const [mobileDayIdx, setMobileDayIdx] = React.useState(0);
   const [regenOpen, setRegenOpen] = React.useState(false);
-  const [regenReason, setRegenReason] = React.useState<RegenReason>("retry");
-  const [regenNote, setRegenNote] = React.useState("");
 
   // Editable target bands — defaults from NUTRITION_RULES.md, overrideable
   // before regenerate. Not persisted; each page load resets to defaults.
@@ -376,7 +373,7 @@ function PlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regenOpen, regenerating, editingKey, savingEdit, editTargetsOpen]);
 
-  async function handleRegenerate() {
+  async function handleRegenerate(selectedCriteria: string[]) {
     setRegenerating(true);
     setRegenError(null);
     try {
@@ -398,8 +395,8 @@ function PlanView({
         );
       }
 
-      // For Phase 3, every regenerate is mode: "fresh". The mode: "adjust"
-      // path lands in Phase 4.5 alongside the §4.7 chooser sheet.
+      // Every regenerate is mode: "fresh". The targets band (Edit targets)
+      // still flows through; selectedCriteria adds user-chosen AI emphasis.
       const response = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -408,9 +405,9 @@ function PlanView({
           profile,
           foodPreferences: foodPrefs,
           trainingWeek,
-          previousFeedback: regenNote.trim() || undefined,
           carbTargetsGperKg: { easy: easyCarb, hard: hardCarb },
           proteinTargetGperKg: proteinTarget,
+          selectedCriteria,
         }),
       });
 
@@ -435,13 +432,13 @@ function PlanView({
         weekId: plan.weekId,
         generatedAt: new Date().toISOString(),
         manuallyEdited: false,
+        // Trust the user's selection over the echoed response (brief §5).
+        appliedCriteria: selectedCriteria,
       };
       await db.fuellingPlans.put(next);
 
       // Live query in PlanPage re-fires automatically.
       setRegenOpen(false);
-      setRegenNote("");
-      setRegenReason("retry");
     } catch (e) {
       setRegenError(
         e instanceof Error ? e.message : "Regeneration failed.",
@@ -679,182 +676,18 @@ function PlanView({
           })}
         </div>
 
-        {/* Rules footer */}
-        {plan.rules.length > 0 && (
-          <div className="mt-7 pt-7 border-t-[0.5px] border-border-default grid grid-cols-3 gap-8">
-            {plan.rules.slice(0, 3).map((rule, i) => (
-              <div key={i}>
-                <div className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary">
-                  Rule {String(i + 1).padStart(2, "0")}
-                </div>
-                <p className="text-[12px] text-ink-secondary mt-2 leading-[1.5]">
-                  {rule}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Coaching rules — only when criteria were applied at regenerate. */}
+        <CoachingRules criteriaIds={plan.appliedCriteria} />
       </div>
 
-      {/* Regenerate dialog */}
-      <AnimatePresence>
-        {regenOpen && (
-          <motion.div
-            key="regen-overlay"
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={closeRegen}
-              aria-hidden
-            />
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="regen-title"
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97, y: 4 }}
-              transition={{ duration: 0.18, ease: ease.out }}
-              className="relative w-full max-w-md rounded-card bg-surface-1 border border-border p-6 shadow-elevated"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2
-                    id="regen-title"
-                    className="font-display text-display-sm text-ink"
-                  >
-                    Regenerate plan
-                  </h2>
-                  <p className="text-body-sm text-ink-secondary mt-1">
-                    What's changed since this plan was generated?
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeRegen}
-                  disabled={regenerating}
-                  aria-label="Close"
-                  className="shrink-0 -mt-1 -mr-1 p-1 text-ink-tertiary hover:text-ink rounded"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="mt-5 space-y-2">
-                {(
-                  [
-                    {
-                      value: "training",
-                      label: "Training has changed",
-                      hint: "Edit it in Settings first, then regenerate.",
-                      href: "/settings?tab=training",
-                    },
-                    {
-                      value: "prefs",
-                      label: "Food preferences have changed",
-                      hint: "Edit them in Settings first, then regenerate.",
-                      href: "/settings?tab=food",
-                    },
-                    {
-                      value: "retry",
-                      label: "Nothing — try a different plan",
-                      hint: undefined,
-                      href: undefined,
-                    },
-                  ] as const
-                ).map((opt) => {
-                  const selected = regenReason === opt.value;
-                  return (
-                    <label
-                      key={opt.value}
-                      className={cn(
-                        "flex items-start gap-3 p-3 rounded-button border cursor-pointer transition-colors",
-                        selected
-                          ? "border-accent bg-surface-2"
-                          : "border-border bg-surface-2 hover:border-border-strong",
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="regen-reason"
-                        value={opt.value}
-                        checked={selected}
-                        onChange={() => setRegenReason(opt.value)}
-                        className="mt-1 accent-accent"
-                      />
-                      <div className="flex-1">
-                        <div className="text-body text-ink">{opt.label}</div>
-                        {opt.hint && selected && opt.href && (
-                          <p className="text-body-sm text-ink-tertiary mt-1 leading-snug">
-                            {opt.hint}{" "}
-                            <Link
-                              href={opt.href}
-                              className="text-accent hover:text-accent-hover underline"
-                            >
-                              Open Settings →
-                            </Link>
-                          </p>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5">
-                <Label htmlFor="regen-note">
-                  Anything else for the AI (optional)
-                </Label>
-                <Textarea
-                  id="regen-note"
-                  value={regenNote}
-                  onChange={(e) => setRegenNote(e.target.value)}
-                  placeholder="e.g. lighter dinner Thursday, more variety, IBS-friendly this week…"
-                  rows={3}
-                  className="min-h-[72px]"
-                />
-              </div>
-
-              {regenError && (
-                <div
-                  className="mt-4 p-3 rounded-button"
-                  style={{
-                    border:
-                      "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
-                    background:
-                      "color-mix(in srgb, var(--danger) 8%, transparent)",
-                  }}
-                >
-                  <p className="text-body-sm text-danger leading-snug">
-                    {regenError}
-                  </p>
-                </div>
-              )}
-
-              <div className="mt-6 flex justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={closeRegen}
-                  disabled={regenerating}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                >
-                  {regenerating ? "Generating…" : "Regenerate"}
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Regenerate dialog — coaching-criteria chips (tasks/RegenerateDialog.md) */}
+      <RegenerateDialog
+        open={regenOpen}
+        generating={regenerating}
+        error={regenError}
+        onGenerate={handleRegenerate}
+        onClose={closeRegen}
+      />
 
       {/* Edit targets modal */}
       <AnimatePresence>
@@ -1042,8 +875,9 @@ function PlanView({
                     autoFocus
                   />
                   <p className="text-body-sm text-ink-tertiary mt-1 leading-snug">
-                    {editFood.length}/60 — commas between ingredients, "× N" for
-                    branded quantities, "/" for substitutions.
+                    {editFood.length}/60 — commas between ingredients,
+                    &ldquo;× N&rdquo; for branded quantities, &ldquo;/&rdquo;
+                    for substitutions.
                   </p>
                 </div>
 
@@ -1267,6 +1101,10 @@ function SessionPill({
     long: {
       background: "var(--session-pill-long-bg)",
       color: "var(--session-pill-long-fg)",
+    },
+    race: {
+      background: "var(--session-pill-race-bg)",
+      color: "var(--session-pill-race-fg)",
     },
   };
   return (

@@ -638,7 +638,12 @@ function DayChip({
       ) : (
         <div className="flex flex-col items-start gap-1">
           {subs.map((s) => (
-            <SessionTag key={s.id} type={s.type} customLabel={s.customType} />
+            <SessionTag
+              key={s.id}
+              type={s.type}
+              customLabel={s.customType}
+              unset={s.typeUnset}
+            />
           ))}
         </div>
       )}
