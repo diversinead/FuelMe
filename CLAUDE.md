@@ -1,10 +1,12 @@
 # Session handoff — 31-05-2026 (AEST)
 
 ## Status
-Phases 1–7 complete and pushed to `origin/main` (HEAD `e199e7f`). The
-post-Phase-5 pending-updates queue (#1–#6) is cleared, and the Phase 7
-admin page is live. The full end-to-end loop runs against the real OpenAI
-backend.
+Phases 1–7 **and Phase 6 (polish)** complete and pushed to `origin/main`
+(HEAD `ecd5594`). The post-Phase-5 pending-updates queue (#1–#6) is cleared,
+the Phase 7 admin page is live, and Phase 6 polish is done (hybrid grocery,
+consistent states, mobile swipe, onboarding copy, dev-seed removed, PWA).
+**Only Phase 8 (plan accuracy) remains.** The full end-to-end loop runs
+against the real OpenAI backend.
 
 - Onboard → AI generates first plan → land on `/plan/[weekId]`
 - Plan view: 2-band editable carb/protein targets (compact legend + modal),
@@ -12,8 +14,9 @@ backend.
   coaching-criteria chooser — chips drive AI emphasis and render a
   "Coaching rules" footer; replaced the old `plan.rules` footer),
   smart Grocery button.
-- Grocery view: AI-generated list from `/api/grocery` (timeout-bounded),
-  no Reset/Regenerate buttons, back link points to the plan.
+- Grocery view: hybrid generation (SPEC §4.4.1) — built locally from the plan
+  (`lib/grocery.ts` + `lib/foodMetadata.ts`, instant/offline), `/api/grocery`
+  only enriches unknown foods + notes (graceful fallback). No Reset/Regenerate.
 - Check-in (`/checkin/[weekId]`): completion grid + Apply-to-all, energy,
   sessions, notes → `/api/feedback` → Wins / Missed / Actions.
 - Dashboard "Plan next week" → three-card chooser (Copy / Adjust / Fresh).
@@ -25,12 +28,14 @@ backend.
 API routes:
 - `/api/plan` — 6-step periodisation, 2-band targets, variance rule,
   override-aware, + coaching-criteria emphasis. Temperature 0.2.
-- `/api/grocery` — category-aggregated AI list (maxDuration 60, 50s timeout).
+- `/api/grocery` — enrich-only (categorise unknown foods + notes; the list
+  itself is built client-side). maxDuration 60.
 - `/api/feedback` — coach review (wins/missed/recommendations + edits).
 - `/api/admin/{login,logout,rules}` — HMAC session cookie + GET/PUT config.
 
 **Working tree:** clean on `main` apart from your in-progress SPEC.md edit.
-Most recent commit `e199e7f` (Phase 7, 3/3), pushed to origin/main.
+Most recent commit `ecd5594` (Phase 6 PWA), pushed to origin/main. PWA is
+installable (`app/manifest.ts`, `app/icon.svg`, `npm run gen:icons`).
 
 Source-of-truth docs:
 - **SPEC.md** — architectural contract + phase plan (§7: Phase 6 = polish +
@@ -58,6 +63,12 @@ Source-of-truth docs:
   template) — regenerate NUTRITION_RULES.md; `npm run regenerate:rules`.
 - `lib/adminAuth.ts` — HMAC-signed admin session cookie (node:crypto).
 - `lib/coachingCriteria.ts` — Regenerate-dialog criteria (id/label/rule/guidance).
+- `lib/grocery.ts` + `lib/foodMetadata.ts` + `lib/groceryClient.ts` — hybrid
+  grocery (SPEC §4.4.1): local parse/aggregate/size via the metadata table +
+  client orchestrator (build → best-effort enrich → save).
+- `components/shared/states.tsx` — LoadingState / EmptyState / ErrorBanner.
+- `app/manifest.ts` + `app/icon.svg` + `/public/icon-*.png` — PWA
+  (`npm run gen:icons` regenerates the PNGs via a no-dep encoder).
 - `lib/defaults.ts` — 2-band carb defaults, `SESSION_TYPE_BAND` map.
 - `app/api/{plan,grocery,feedback}/route.ts` — OpenAI POST handlers.
 - `app/api/admin/{login,logout,rules}/route.ts` — admin auth + config CRUD.
@@ -90,23 +101,23 @@ and vary across the week), #5 (selected criteria visibly shape the plan).
   plan prompt still uses the 2-band model from `lib/defaults.ts`; reconciling
   it with the 7-day-type JSON table is Phase 8 work.
 
-## Next phase — Phase 6 (Polish), per SPEC §7 items 20–24
+## Phase 6 (Polish) — COMPLETE (SPEC §7 items 20–24)
 
-We did Phase 7 (admin) before Phase 6, so Phase 6 is the active phase now.
-SPEC §7 is authoritative; this list mirrors it:
+Shipped & pushed: hybrid grocery (§4.4.1, `2c8fb70`), consistent
+empty/loading/error states (`de987a3`), mobile swipe between days (`7890122`),
+onboarding copy + dev-seed removal (`5133e36`), PWA manifest + icons
+(`ecd5594`). The "sharpen prompt rules slot" item was dropped (obsolete — the
+RegenerateDialog coaching-rules footer replaced `plan.rules`).
 
-- **PWA** — `next-pwa`, manifest, icons (Add to Home Screen / offline).
-- **Empty / loading / error states** across the app.
-- **Mobile QA** — horizontally-scrollable / swipeable plan view on narrow
-  viewports; Targets band collapse on narrow viewports.
-- **Onboarding empty-state copy.**
-- **Hybrid grocery refactor (SPEC §4.4.1, item 24)** — local-first
-  aggregation + `lib/foodMetadata.ts`, AI only for unknown foods + notes,
-  graceful degradation. The biggest item; not pure polish.
-- (CLAUDE extra) strip the dev-only "Seed mock plan" button from the plan
-  empty state; replace with a real "plan this week" CTA.
+## Next phase — Phase 8 (Plan accuracy)
 
-Phase 8 (after 6) = plan accuracy — see "Known issues / deferred" above.
+The athlete's flagged top priority; budget real time. The plan prompt still
+uses the 2-band model from `lib/defaults.ts` — reconcile it with the
+7-day-type table in `config/nutritionRules.json`, and address: within-day carb
+distribution (one meal shouldn't carry the whole day), periodisation nuance,
+elevated post-session recovery meals, and preload-the-night-before. Fixes flow
+source → code: edit the JSON (via `/admin` or directly) → it drives the prompt
+builders. See "Known issues / deferred" above.
 
 # Working agreement
 
