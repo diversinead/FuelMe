@@ -167,6 +167,21 @@ export function deriveDayFields(sessions: SubSession[]): {
   };
 }
 
+/**
+ * Deep-clone a week's day sessions with fresh sub-session ids — for seeding a
+ * new TrainingWeek from an existing one (e.g. "Plan next week's training"
+ * pre-populated from this week). Re-iding keeps React keys unique per week and
+ * avoids two weeks sharing sub-session identity.
+ */
+export function cloneWeekSessions(sessions: DaySession[]): DaySession[] {
+  return sessions.map((day) =>
+    reconcileDaySession({
+      ...day,
+      sessions: (day.sessions ?? []).map((s) => ({ ...s, id: subSessionId() })),
+    }),
+  );
+}
+
 /** Rebuild a DaySession's derived fields from its sub-sessions. */
 export function reconcileDaySession(day: DaySession): DaySession {
   const sessions = day.sessions ?? [];

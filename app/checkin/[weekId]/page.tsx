@@ -9,6 +9,7 @@ import {
   getDb,
   type AIFeedback,
   type CheckIn,
+  type CheckInStatus,
   type CompletionStatus,
   type Day,
   type FuellingPlan,
@@ -33,6 +34,10 @@ const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: "afternoon", label: "Afternoon" },
   { slot: "dinner", label: "Dinner" },
 ];
+
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
 const STATUSES: CompletionStatus[] = ["done", "partial", "missed", "swapped"];
 const STATUS_LABEL: Record<CompletionStatus, string> = {
@@ -82,14 +87,65 @@ export default function CheckInPage({
   const [energy, setEnergy] = React.useState<1 | 2 | 3 | 4 | 5>(3);
   const [sessionsCompleted, setSessionsCompleted] = React.useState(0);
   const [freeNotes, setFreeNotes] = React.useState("");
+  const [status, setStatus] = React.useState<CheckInStatus>("draft");
+  const [feedback, setFeedback] = React.useState<AIFeedback | undefined>(
+    undefined,
+  );
+  const [revised, setRevised] = React.useState(false);
+  const [justSaved, setJustSaved] = React.useState(false);
+  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const [feedbackLoading, setFeedbackLoading] = React.useState(false);
   const [feedbackError, setFeedbackError] = React.useState<string | null>(null);
   const [applying, setApplying] = React.useState(false);
   const [applyError, setApplyError] = React.useState<string | null>(null);
   const [applied, setApplied] = React.useState(false);
 
+  // Refs that drive the autosave machinery without re-triggering effects.
+  const hydratedRef = React.useRef(false);
+  const statusRef = React.useRef<CheckInStatus>("draft");
+  const baselineRef = React.useRef<string>("");
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedFlashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  // Latest draft not yet flushed to Dexie — used to flush on unmount so an edit
+  // made within the debounce window isn't lost when navigating away.
+  const pendingRef = React.useRef<CheckIn | null>(null);
   React.useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Flush any pending draft when leaving the page (client nav unmount).
+  React.useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (pendingRef.current) {
+        void getDb().checkIns.put(pendingRef.current);
+        pendingRef.current = null;
+      }
+    };
+  }, []);
+
+  // Serialise the form so the autosave effect can tell a real user edit from a
+  // re-render (and skip writing an empty draft just from opening the page).
+  function serializeForm(
+    comp: Record<string, CompletionStatus>,
+    en: number,
+    ss: number,
+    notes: string,
+  ): string {
+    const compKey = Object.keys(comp)
+      .sort()
+      .map((k) => `${k}=${comp[k]}`)
+      .join("|");
+    return JSON.stringify({ compKey, en, ss, notes });
+  }
+
+  // Hydrate the form from the saved record once. Guarded with a ref so autosave
+  // writes (which update `existing` via the live query) don't re-hydrate.
+  React.useEffect(() => {
+    if (existing === undefined) return; // still loading
+    if (hydratedRef.current) return;
     if (existing) {
       const next: Record<string, CompletionStatus> = {};
       for (const c of existing.mealCompletions) {
@@ -99,66 +155,111 @@ export default function CheckInPage({
       setEnergy(existing.energyRating);
       setSessionsCompleted(existing.sessionsCompleted);
       setFreeNotes(existing.freeNotes ?? "");
+      setStatus(existing.status ?? "submitted");
+      setFeedback(existing.aiFeedback);
+      setLastSavedAt(new Date(existing.submittedAt));
+      baselineRef.current = serializeForm(
+        next,
+        existing.energyRating,
+        existing.sessionsCompleted,
+        existing.freeNotes ?? "",
+      );
+    } else {
+      baselineRef.current = serializeForm({}, 3, 0, "");
     }
+    hydratedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing]);
 
-  if (plan === undefined || existing === undefined) return <LoadingState />;
+  // Debounced draft autosave (500ms). Only fires once the form differs from the
+  // hydrated baseline, so opening the page never creates an empty draft.
+  // Editing a submitted check-in reverts it to draft and drops the now-stale
+  // AI feedback (re-submit to refresh).
+  React.useEffect(() => {
+    if (!hydratedRef.current) return;
+    const cur = serializeForm(completions, energy, sessionsCompleted, freeNotes);
+    if (cur === baselineRef.current) return; // no user change yet (or reverted)
 
-  function buildCheckInPayload(preserveFeedback: boolean): CheckIn {
-    return {
+    if (statusRef.current === "submitted") {
+      setStatus("draft");
+      setFeedback(undefined);
+      setRevised(true);
+    }
+
+    const payload: CheckIn = {
       id: weekId,
       weekId,
       submittedAt: existing?.submittedAt ?? new Date().toISOString(),
-      mealCompletions: Object.entries(completions).map(([k, status]) => {
+      mealCompletions: Object.entries(completions).map(([k, s]) => {
         const [day, slot] = k.split(":");
-        return { day, slot, status };
+        return { day, slot, status: s };
       }),
       energyRating: energy,
       sessionsCompleted,
       freeNotes: freeNotes || undefined,
-      aiFeedback: preserveFeedback ? existing?.aiFeedback : undefined,
+      status: "draft",
     };
-  }
 
-  async function submit() {
+    pendingRef.current = payload;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      await getDb().checkIns.put(payload);
+      pendingRef.current = null;
+      setLastSavedAt(new Date());
+      setJustSaved(true);
+      if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+      savedFlashTimer.current = setTimeout(() => setJustSaved(false), 1600);
+    }, 500);
+
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completions, energy, sessionsCompleted, freeNotes]);
+
+  if (plan === undefined || existing === undefined) return <LoadingState />;
+
+  // Submit (or re-submit) the check-in for AI feedback. Persists the latest
+  // answers first, then flips status → 'submitted' with the returned feedback.
+  async function submitForFeedback() {
+    if (!plan) return;
     setSubmitting(true);
-    try {
-      // Preserve existing aiFeedback across plain saves — users can refresh
-      // it explicitly via "Get AI feedback".
-      const checkIn = buildCheckInPayload(true);
-      checkIn.submittedAt = new Date().toISOString();
-      await getDb().checkIns.put(checkIn);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function getFeedback() {
-    setFeedbackLoading(true);
     setFeedbackError(null);
+    // Cancel any pending draft autosave so it can't overwrite the submitted record.
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingRef.current = null;
     try {
-      if (!plan) {
-        throw new Error("No fuelling plan saved for this week.");
-      }
       const db = getDb();
-      const profile = await db.profile.get("me");
-      if (!profile) {
-        throw new Error("Missing profile. Re-run onboarding.");
-      }
+      const [profile, foodPreferences] = await Promise.all([
+        db.profile.get("me"),
+        db.foodPreferences.get("me"),
+      ]);
+      if (!profile) throw new Error("Missing profile. Re-run onboarding.");
 
-      // Save the current check-in state first so the API call sees the
-      // freshest snapshot the athlete just keyed in.
-      const checkInPayload = buildCheckInPayload(false);
-      checkInPayload.submittedAt = new Date().toISOString();
-      await db.checkIns.put(checkInPayload);
+      const base: CheckIn = {
+        id: weekId,
+        weekId,
+        submittedAt: new Date().toISOString(),
+        mealCompletions: Object.entries(completions).map(([k, s]) => {
+          const [day, slot] = k.split(":");
+          return { day, slot, status: s };
+        }),
+        energyRating: energy,
+        sessionsCompleted,
+        freeNotes: freeNotes || undefined,
+        status: "draft",
+      };
+      // Persist the latest answers first, so a failed AI call still saves them.
+      await db.checkIns.put(base);
 
       const response = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fuellingPlan: plan,
-          checkIn: checkInPayload,
+          checkIn: base,
           profile,
+          foodPreferences,
         }),
       });
 
@@ -178,23 +279,27 @@ export default function CheckInPage({
         ...apiFeedback,
         generatedAt: new Date().toISOString(),
       };
-      await db.checkIns.put({ ...checkInPayload, aiFeedback });
+      await db.checkIns.put({ ...base, status: "submitted", aiFeedback });
+      setStatus("submitted");
+      setFeedback(aiFeedback);
+      setRevised(false);
+      setLastSavedAt(new Date());
     } catch (e) {
       setFeedbackError(
         e instanceof Error ? e.message : "Feedback generation failed.",
       );
     } finally {
-      setFeedbackLoading(false);
+      setSubmitting(false);
     }
   }
 
   async function applySuggestedEdits() {
-    if (!plan || !existing?.aiFeedback?.suggestedPlanEdits?.length) return;
+    if (!plan || !feedback?.suggestedPlanEdits?.length) return;
     setApplying(true);
     setApplyError(null);
     setApplied(false);
     try {
-      const edits = existing.aiFeedback.suggestedPlanEdits;
+      const edits = feedback.suggestedPlanEdits;
       // Merge each suggested edit into the matching meal by (day, slot).
       const meals: PlannedMeal[] = plan.meals.map((m) => {
         const patch = edits.find(
@@ -435,43 +540,73 @@ export default function CheckInPage({
         />
       </section>
 
-      <div className="flex flex-wrap items-center gap-3 sticky bottom-0 bg-surface-0/95 backdrop-blur pt-4 pb-2 -mx-5 px-5 md:mx-0 md:px-0 border-t border-border-subtle">
-        <Button onClick={submit} disabled={submitting} size="lg">
-          {submitting
-            ? "Saving…"
-            : existing
-              ? "Update check-in"
-              : "Save check-in"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={getFeedback}
-          disabled={feedbackLoading || !plan}
-          title={!plan ? "Generate a plan for this week first" : undefined}
+      {revised && (
+        <div
+          className="mb-4 p-3 rounded-button"
+          style={{
+            border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+            background: "color-mix(in srgb, var(--warning) 8%, transparent)",
+          }}
         >
-          {feedbackLoading
-            ? "Generating…"
-            : existing?.aiFeedback
-              ? "Refresh AI feedback"
-              : "Get AI feedback"}
-        </Button>
-        {existing && (
-          <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary ml-auto">
-            Saved {new Date(existing.submittedAt).toLocaleString()}
+          <p className="text-body-sm text-ink leading-snug">
+            This check-in has been edited — re-submit to refresh AI feedback.
+          </p>
+        </div>
+      )}
+
+      <div className="sticky bottom-0 bg-surface-0/95 backdrop-blur pt-4 pb-3 -mx-5 px-5 md:mx-0 md:px-0 border-t border-border-subtle">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            onClick={submitForFeedback}
+            disabled={submitting || !plan}
+            size="lg"
+            title={!plan ? "Generate a plan for this week first" : undefined}
+          >
+            {submitting
+              ? "Submitting…"
+              : status === "submitted"
+                ? "Refresh AI feedback"
+                : "Submit for AI feedback"}
+          </Button>
+          <span
+            aria-live="polite"
+            className={cn(
+              "font-mono text-mono-sm uppercase tracking-widest transition-colors duration-300",
+              justSaved ? "text-accent" : "text-ink-tertiary",
+            )}
+          >
+            {status === "submitted"
+              ? lastSavedAt
+                ? `Submitted · ${formatTime(lastSavedAt)}`
+                : "Submitted"
+              : lastSavedAt
+                ? `Draft · saved ${formatTime(lastSavedAt)}`
+                : "Draft"}
           </span>
-        )}
+          {!plan && (
+            <span className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary ml-auto">
+              No plan yet — drafts still save
+            </span>
+          )}
+        </div>
+        <p className="text-body-sm text-ink-tertiary mt-2">
+          Your answers save automatically as you go — submit only when you want
+          AI feedback.
+        </p>
       </div>
 
       {feedbackError && (
-        <ErrorBanner message={feedbackError} onRetry={getFeedback} className="mt-6" />
+        <ErrorBanner
+          message={feedbackError}
+          onRetry={submitForFeedback}
+          className="mt-6"
+        />
       )}
 
-      {existing?.aiFeedback && (
+      {feedback && (
         <FeedbackPanel
-          feedback={existing.aiFeedback}
-          canApply={
-            !!plan && !!existing.aiFeedback.suggestedPlanEdits?.length
-          }
+          feedback={feedback}
+          canApply={!!plan && !!feedback.suggestedPlanEdits?.length}
           applying={applying}
           applied={applied}
           applyError={applyError}

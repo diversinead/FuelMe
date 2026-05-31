@@ -1,53 +1,87 @@
-# Session handoff — 31-05-2026 (AEST)
+# Session handoff — updated end of UX-polish session (post-Phase-7)
 
 ## Status
-Phases 1–7 **and Phase 6 (polish)** complete and pushed to `origin/main`
-(HEAD `ecd5594`). The post-Phase-5 pending-updates queue (#1–#6) is cleared,
-the Phase 7 admin page is live, and Phase 6 polish is done (hybrid grocery,
-consistent states, mobile swipe, onboarding copy, dev-seed removed, PWA).
-**Only Phase 8 (plan accuracy) remains.** The full end-to-end loop runs
-against the real OpenAI backend.
+Phases 1–7 complete. The **entire pending-updates queue is cleared**, plus a
+follow-on round of UX work this session (details below). **Only Phase 8 (plan
+accuracy) remains.** The full end-to-end loop runs against the real OpenAI
+backend.
 
 - Onboard → AI generates first plan → land on `/plan/[weekId]`
 - Plan view: 2-band editable carb/protein targets (compact legend + modal),
-  meal-cell editing with macro propagation, Regenerate dialog (now the
-  coaching-criteria chooser — chips drive AI emphasis and render a
-  "Coaching rules" footer; replaced the old `plan.rules` footer),
-  smart Grocery button.
-- Grocery view: hybrid generation (SPEC §4.4.1) — built locally from the plan
-  (`lib/grocery.ts` + `lib/foodMetadata.ts`, instant/offline), `/api/grocery`
-  only enriches unknown foods + notes (graceful fallback). No Reset/Regenerate.
-- Check-in (`/checkin/[weekId]`): completion grid + Apply-to-all, energy,
-  sessions, notes → `/api/feedback` → Wins / Missed / Actions.
-- Dashboard "Plan next week" → three-card chooser (Copy / Adjust / Fresh).
-- Training editor: session type is blank by default ("Set type"); RACE
-  pill is gold; the distance stepper steps from the visible value.
-- `/admin` (Phase 7): password-gated nutrition-rules editor. Saves write
-  `config/nutritionRules.json` and regenerate NUTRITION_RULES.md + prompts.
+  meal-cell editing with macro propagation, Regenerate dialog (coaching-criteria
+  chips **+ a free-text "Things to focus on" textarea** — both shape AI
+  generation; chips render the "Coaching rules" footer). Smart Grocery button.
+  The "No plan" empty-state can **Start a blank plan** when training exists; a
+  blank plan opens with the generate dialog (`?generate=1`) and the action reads
+  "Generate" until meals exist. A **Food prefs** link (top utility row)
+  deep-links to Settings → food and back.
+- Grocery view: hybrid generation (SPEC §4.4.1), built locally; `/api/grocery`
+  enrich-only. Print opens a **unique URL per click** (cache-bust — never a
+  stale snapshot). Same fix on the plan print.
+- **Check-in (`/checkin/[weekId]`) — draft/submitted state machine:** every edit
+  **autosaves as a draft** (500ms debounce; "Draft · saved HH:MM" line + helper
+  copy; unmount-flush so nothing is lost). **"Submit for AI feedback"** is the
+  only AI call → flips status to `submitted`, shows Wins/Missed/Actions. Editing
+  a submitted check-in reverts to draft, clears feedback, shows a "re-submit to
+  refresh" notice. Feedback route now also receives `foodPreferences`.
+- **Dashboard:** This-week hero (View plan + Grocery list only). Right column: a
+  **context-aware "This week's check-in" card** (Track as you go / Keep going +
+  progress / Wrap up / This week's coaching — by day-of-week & status) above an
+  **always-shown "Up next — Plan next week"** card (Training → `/training/next`,
+  Fuelling → chooser). "Plan completion" stat card is tappable → check-in.
+  **History** is a merged week list (Training / Plan / Check-in links per week,
+  no pills). Plan-next-week chooser is now **two non-AI options: Copy last week /
+  Blank template** (+ a "set training first" reminder when next week has none) —
+  AI generation happens only on the fuelling page.
+- **Training editing has dedicated routes** (was a Settings tab): see §Training.
+- Training editor: session type blank by default ("Set type"); **RACE pill is
+  amber** (matches the check-in "Partial" pill — was gold); distance stepper
+  steps from the visible value.
+- `/admin` (Phase 7): password-gated nutrition-rules editor.
 
 API routes:
 - `/api/plan` — 6-step periodisation, 2-band targets, variance rule,
-  override-aware, + coaching-criteria emphasis. Temperature 0.2.
-- `/api/grocery` — enrich-only (categorise unknown foods + notes; the list
-  itself is built client-side). maxDuration 60.
-- `/api/feedback` — coach review (wins/missed/recommendations + edits).
+  override-aware, coaching-criteria emphasis **+ free-text `focusNotes`**. Temp 0.2.
+- `/api/grocery` — enrich-only. maxDuration 60.
+- `/api/feedback` — coach review; body now includes `foodPreferences`.
 - `/api/admin/{login,logout,rules}` — HMAC session cookie + GET/PUT config.
 
-**Working tree:** clean on `main` apart from your in-progress SPEC.md edit.
-Most recent commit `ecd5594` (Phase 6 PWA), pushed to origin/main. PWA is
-installable (`app/manifest.ts`, `app/icon.svg`, `npm run gen:icons`).
+**Working tree:** this session's work is committed on branch
+`ux-polish-checkin-autosave` (branched off `main` at `ecd5594`), not yet pushed
+or merged. typecheck + lint green. `tsconfig.tsbuildinfo` is intentionally left
+uncommitted (build artifact). Push/open a PR when ready.
+
+## Training editing (dedicated routes — replaced the Settings "Training" tab)
+- `/training/[weekId]/edit` — edit one week (date read-only; sessions editable).
+  Past weeks render view-only. Has a **"Save & fuelling plan →"** button.
+- `/training/next` — edit next Monday's week, pre-seeded from this week's
+  sessions (`cloneWeekSessions`), persisted only on save.
+- Settings now has Profile + Food preferences only; old `?tab=training`
+  deep-links redirect to `/training/[currentWeekId]/edit`. (SPEC §4.6 / DESIGN
+  §8 still describe the old tab — superseded by these routes.)
+
+## Data model changes this session (`lib/db.ts`)
+- **Dexie v2 migration:** `dietaryNotes` + `allergies` moved Profile →
+  FoodPreferences (constraints belong with food info). Onboarding step 2 +
+  Settings food tab hold them now (allergies has a "safety" hint). Prompts read
+  `foodPreferences.dietaryNotes/.allergies/.avoid`.
+- **Dexie v3 migration:** `CheckIn.status: 'draft' | 'submitted'` added;
+  existing records migrated to `submitted`.
+- New helpers: `blankPlanRecord(weekId)` (empty 35-meal plan),
+  `cloneWeekSessions` (re-id sub-sessions), `daysIntoWeek` (in `lib/date.ts`).
 
 Source-of-truth docs — **on session start, read these after this file, in
 order:** SPEC.md → config/nutritionRules.json (+ lib/nutritionRulesSchema.ts)
 → NUTRITION_RULES.md → DESIGN.md.
-- **SPEC.md** — architectural contract + phase plan (§7: Phase 6 = polish +
-  hybrid grocery refactor; Phase 7 = admin [done]; Phase 8 = plan accuracy).
+- **SPEC.md** — architectural contract + phase plan (Phase 7 = admin [done];
+  Phase 8 = plan accuracy). Updated this session: Profile/FoodPreferences
+  interfaces + §4.1 onboarding steps (dietary/allergies moved).
 - **config/nutritionRules.json** — THE nutrition source of truth (Phase 7).
   Edit via `/admin` or directly, then `npm run regenerate:rules`.
 - **NUTRITION_RULES.md** — GENERATED artifact of the JSON (do-not-edit
   banner). Never hand-edit.
-- **DESIGN.md** — visual language (Targets band, Modal pattern, gold RACE
-  pill token, Tailwind opacity-on-CSS-vars gotcha §11).
+- **DESIGN.md** — visual language (Targets band, Modal pattern, **amber RACE
+  pill token**, Tailwind opacity-on-CSS-vars gotcha §11).
 
 ## Codebase orientation (for a fresh agent)
 
@@ -75,12 +109,17 @@ order:** SPEC.md → config/nutritionRules.json (+ lib/nutritionRulesSchema.ts)
 - `app/api/{plan,grocery,feedback}/route.ts` — OpenAI POST handlers.
 - `app/api/admin/{login,logout,rules}/route.ts` — admin auth + config CRUD.
 - `app/{plan,grocery,checkin}/[weekId]/page.tsx` — week-scoped views.
-- `app/dashboard/page.tsx` — landing + plan-next-week chooser.
+- `app/training/[weekId]/edit/page.tsx` + `app/training/next/page.tsx` +
+  `components/training/TrainingWeekEditor.tsx` — dedicated training editing.
+- `app/dashboard/page.tsx` — landing, context-aware check-in card, Up-next,
+  merged history, Copy/Blank chooser.
 - `app/admin/page.tsx` + `components/admin/*` — nutrition-rules editor.
-- `components/plan/*` — RegenerateDialog, CoachingRules, chip.
+- `components/plan/*` — RegenerateDialog (chips + focus textarea), CoachingRules, chip.
 - `components/ui/*` — hand-built primitives (no shadcn generator).
 - `tasks/*.md` — ephemeral task briefs. Delete after the user verifies.
-  (`tasks/RegenerateDialog.md` shipped — safe to delete once you've verified.)
+  (Only `AdminPage.md` + `RegenerateDialog.md` remain, both shipped/verified —
+  safe to delete. `context-aware-dashboard-card.md` + `TrainingPage.md` were
+  deleted this session after verification.)
 
 Tailwind gotcha worth re-reading in DESIGN.md §11: the `/opacity`
 modifier silently drops on hex-string CSS-var colours. Use
@@ -99,18 +138,16 @@ modifier silently drops on hex-string CSS-var colours. Use
 
 ## Pending updates
 
-**Workflow:** work the list below one at a time, top-down. After each item,
-give a short summary + a verification checklist and WAIT for confirmation
-before moving on; once confirmed, delete that bullet. Max 2 attempts per
-issue — if it isn't resolved in 2 tries, rebuild the affected component from
-the primitives in `components/ui/*` rather than patching further.
+![img_2.png](img_2.png)
+Once queue is clear suggest progressing to Phase 8 (Plan accuracy) below.
 
-<!-- Add fix-list items here as bullets. -->
-
-Previous queue (#1–#6) CLEARED — shipped in `35961b6` and pushed. Optional
-live-backend sanity-checks if not yet done: #1 (a real grocery generation
-completes), #2 (regenerated dinners name specific proteins and vary across
-the week), #5 (selected criteria visibly shape the plan).
+**Workflow when new items land:** work the list one at a time, top-down. After
+each item, give a short summary + verification checklist and WAIT for
+confirmation before moving on; once confirmed, delete that bullet. Max 2
+attempts per issue — if not resolved in 2 tries, rebuild the affected component
+from the primitives in `components/ui/*` rather than patching further.
+**Don't remove/hide/gate existing UI unless asked — flag redundancy as a
+question first** (see memory `dont-remove-ui-without-asking`).
 
 ## Known issues / deferred (don't fix unless asked)
 

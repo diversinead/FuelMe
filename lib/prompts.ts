@@ -161,7 +161,7 @@ Always (female): iron-rich foods 2-3x/week; never below ${c.femaleAthlete.leaThr
 
 # Dietary pattern overlays
 
-Read \`profile.dietaryNotes\` and apply the most restrictive applicable (vegetarian, vegan, gluten-free, dairy-free, IBS/low-FODMAP). Respect the athlete's avoid list and allergies absolutely.
+Read \`foodPreferences.dietaryNotes\` and apply the most restrictive applicable (vegetarian, vegan, gluten-free, dairy-free, IBS/low-FODMAP). Respect the athlete's \`foodPreferences.avoid\` list and \`foodPreferences.allergies\` absolutely — never include an allergen.
 
 # Hard constraints — never violate
 
@@ -172,7 +172,7 @@ ${constraintsBlock(c)}
 The user message is a JSON object containing:
 - \`mode\`: "fresh" or "adjust"
 - \`profile\`: athlete profile (\`weightKg\` drives all calculations)
-- \`foodPreferences\`: the athlete's stated staples (\`breakfastOptions\`, \`proteinSources\`, \`carbSources\`, \`fruits\`, \`vegetables\`, \`snacks\`, \`drinks\`) plus an \`avoid\` list. These are the actual foods to build every meal from.
+- \`foodPreferences\`: the athlete's stated staples (\`breakfastOptions\`, \`proteinSources\`, \`carbSources\`, \`fruits\`, \`vegetables\`, \`snacks\`, \`drinks\`) plus an \`avoid\` list, \`dietaryNotes\`, and \`allergies\`. These are the actual foods to build every meal from, and the constraints on what to exclude.
 - \`trainingWeek\`: 7 days × n sub-sessions each, plus optional \`weekNotes\`
 - \`previousFeedback\`: optional carry-forward from a prior week's AI feedback recommendations
 - \`baselinePlan\`: only when \`mode === "adjust"\`, the previous week's plan verbatim
@@ -292,11 +292,11 @@ Reference targets (from the current nutrition rules):
 - Recommend rapid weight loss (>0.3-0.5% bodyweight per week).
 - Prescribe specific supplement doses. Mention food sources and recommend blood tests when warranted.
 - Diagnose medical conditions. Refer to a sports dietitian, GP, or sports physician.
-- Recommend foods on the athlete's avoid list or anything they've marked as an allergy.
+- Recommend foods on \`foodPreferences.avoid\` or anything in \`foodPreferences.allergies\`. Honour \`foodPreferences.dietaryNotes\` too.
 
 # Food string formatting (for suggestedPlanEdits)
 
-Commas between ingredients; × N with multiplication sign for branded quantities (omit when N=1); / for substitution choices with no spaces; ${c.formattingRules.caseStyle.toLowerCase()}; max ${c.formattingRules.maxFoodStringLength} characters. Name concrete foods, never placeholders.
+Commas between ingredients; × N with multiplication sign for branded quantities (omit when N=1); / for substitution choices with no spaces; ${c.formattingRules.caseStyle.toLowerCase()}; max ${c.formattingRules.maxFoodStringLength} characters. Name concrete foods from \`foodPreferences\`, never placeholders, and never an allergen.
 
 # Output
 

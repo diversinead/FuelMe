@@ -9,6 +9,9 @@ interface FeedbackRequestBody {
   fuellingPlan: unknown;
   checkIn: unknown;
   profile: unknown;
+  // foodPreferences carries dietaryNotes + allergies + avoid (moved off
+  // Profile) so suggestedPlanEdits never violate them. Optional for back-compat.
+  foodPreferences?: unknown;
 }
 
 function isValidBody(body: unknown): body is FeedbackRequestBody {

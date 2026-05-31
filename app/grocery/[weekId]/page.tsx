@@ -127,11 +127,21 @@ function GroceryView({ list }: { list: GroceryList }) {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Link href={`/grocery/${list.weekId}/print?auto=1`} target="_blank">
-            <Button variant="secondary" size="sm">
-              <Printer size={14} /> Print
-            </Button>
-          </Link>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              // Unique URL per click → fresh load + fresh Dexie read, never a
+              // stale print snapshot (same fix as the plan print).
+              window.open(
+                `/grocery/${list.weekId}/print?auto=1&t=${Date.now()}`,
+                "_blank",
+                "noopener",
+              )
+            }
+          >
+            <Printer size={14} /> Print
+          </Button>
         </div>
       </header>
 

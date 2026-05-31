@@ -2,54 +2,53 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft } from "lucide-react";
-import {
-  getDb,
-  type FoodPreferences,
-  type Profile,
-  type TrainingWeek,
-} from "@/lib/db";
+import { getDb, type FoodPreferences, type Profile } from "@/lib/db";
 import { Card, CardLabel } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/shared/states";
 import { ProfileStep } from "@/components/onboarding/ProfileStep";
 import { FoodPrefsStep } from "@/components/onboarding/FoodPrefsStep";
-import { TrainingStep } from "@/components/onboarding/TrainingStep";
-import { emptyWeekSessions } from "@/lib/defaults";
-import { weekIdFor, formatWeekRange } from "@/lib/date";
+import { weekIdFor } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
-type Tab = "profile" | "food" | "training";
+type Tab = "profile" | "food";
 
 export default function SettingsPage() {
-  const currentWeekId = weekIdFor();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab: Tab = (() => {
-    const raw = searchParams?.get("tab");
-    return raw === "food" || raw === "training" || raw === "profile"
-      ? raw
-      : "profile";
-  })();
+
+  // Training lives on its own routes now (/training/[weekId]/edit and
+  // /training/next) — the old `?tab=training` deep-link redirects to the
+  // current week's editor (tasks/TrainingPage.md).
+  const wantsTraining = searchParams?.get("tab") === "training";
+  React.useEffect(() => {
+    if (wantsTraining) router.replace(`/training/${weekIdFor()}/edit`);
+  }, [wantsTraining, router]);
+
+  const initialTab: Tab =
+    searchParams?.get("tab") === "food" ? "food" : "profile";
+
+  // When opened from the plan view (Food prefs link), offer a direct way back
+  // to that week's fuelling plan rather than only the dashboard.
+  const fromPlanWeek =
+    searchParams?.get("from") === "plan" ? searchParams?.get("week") : null;
 
   const data = useLiveQuery(async () => {
     const db = getDb();
     return {
       profile: await db.profile.get("me"),
       foodPrefs: await db.foodPreferences.get("me"),
-      trainingWeek: await db.trainingWeeks.get(currentWeekId),
     };
-  }, [currentWeekId]);
+  }, []);
 
   const [tab, setTab] = React.useState<Tab>(initialTab);
   const [profile, setProfile] = React.useState<Profile | null>(null);
   const [foodPrefs, setFoodPrefs] = React.useState<FoodPreferences | null>(null);
-  const [trainingWeek, setTrainingWeek] = React.useState<TrainingWeek | null>(
-    null,
-  );
   const [saving, setSaving] = React.useState(false);
   const [savedAt, setSavedAt] = React.useState<Date | null>(null);
 
@@ -57,19 +56,11 @@ export default function SettingsPage() {
     if (!data) return;
     if (data.profile && !profile) setProfile(data.profile);
     if (data.foodPrefs && !foodPrefs) setFoodPrefs(data.foodPrefs);
-    if (!trainingWeek) {
-      setTrainingWeek(
-        data.trainingWeek ?? {
-          id: currentWeekId,
-          weekStart: currentWeekId,
-          sessions: emptyWeekSessions,
-        },
-      );
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  if (!data || !profile || !foodPrefs || !trainingWeek) {
+  if (wantsTraining) return <LoadingState />;
+  if (!data || !profile || !foodPrefs) {
     return <LoadingState />;
   }
 
@@ -79,9 +70,6 @@ export default function SettingsPage() {
       const db = getDb();
       if (tab === "profile" && profile) await db.profile.put(profile);
       if (tab === "food" && foodPrefs) await db.foodPreferences.put(foodPrefs);
-      if (tab === "training" && trainingWeek) {
-        await db.trainingWeeks.put(trainingWeek);
-      }
       setSavedAt(new Date());
     } finally {
       setSaving(false);
@@ -96,10 +84,10 @@ export default function SettingsPage() {
       className="app-container py-8 md:py-12 max-w-3xl"
     >
       <Link
-        href="/dashboard"
+        href={fromPlanWeek ? `/plan/${fromPlanWeek}` : "/dashboard"}
         className="inline-flex items-center gap-1 font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-ink"
       >
-        <ArrowLeft size={12} /> Dashboard
+        <ArrowLeft size={12} /> {fromPlanWeek ? "Fuelling plan" : "Dashboard"}
       </Link>
 
       <header className="mt-6 mb-8">
@@ -113,16 +101,13 @@ export default function SettingsPage() {
         {[
           { id: "profile" as const, label: "Profile" },
           { id: "food" as const, label: "Food preferences" },
-          { id: "training" as const, label: "Training" },
         ].map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
               "relative font-mono text-mono uppercase tracking-widest px-3 py-2.5",
-              tab === t.id
-                ? "text-ink"
-                : "text-ink-tertiary hover:text-ink",
+              tab === t.id ? "text-ink" : "text-ink-tertiary hover:text-ink",
             )}
           >
             {t.label}
@@ -142,21 +127,6 @@ export default function SettingsPage() {
         )}
         {tab === "food" && (
           <FoodPrefsStep value={foodPrefs} onChange={setFoodPrefs} />
-        )}
-        {tab === "training" && (
-          <div className="space-y-4">
-            <div>
-              <CardLabel>Editing</CardLabel>
-              <p className="font-display text-display-sm text-ink mt-1">
-                {formatWeekRange(currentWeekId)}
-              </p>
-              <p className="text-body-sm text-ink-tertiary mt-1">
-                Add, edit, or remove sessions for this week. Changes save when
-                you hit “Save changes”.
-              </p>
-            </div>
-            <TrainingStep value={trainingWeek} onChange={setTrainingWeek} />
-          </div>
         )}
       </Card>
 

@@ -213,6 +213,16 @@ export const planPrintCss = `
   gap: 28px;
 }
 
+.sheet .rules-heading {
+  grid-column: 1 / -1;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-tertiary);
+  margin-bottom: 2px;
+}
+
 .sheet .rule-num {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 9px;
@@ -299,6 +309,14 @@ export const planPrintCss = `
   .sheet .plan-grid,
   .sheet .rules {
     width: 100% !important;
+  }
+  /* >3 coaching rules squash the grid — push them to a fresh page. */
+  .sheet .rules.page-break {
+    page-break-before: always;
+    break-before: page;
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
   }
   /* Stretch meal cells so the grid fills the A4 landscape page vertically
      instead of leaving ~80px of whitespace below the rules. */

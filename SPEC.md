@@ -80,8 +80,6 @@ interface Profile {
   weightKg: number;
   heightCm?: number;
   goal: 'performance' | 'maintenance' | 'lean_out' | 'gain';
-  dietaryNotes?: string;    // free text: "vegetarian", "no dairy", etc.
-  allergies?: string;
   cycleTracking?: boolean;  // surface luteal-phase fuelling notes
 }
 
@@ -96,6 +94,8 @@ interface FoodPreferences {
   snacks: string[];
   drinks: string[];             // ["Up&Go", "Rokeby Farms", "milk"]
   avoid: string[];              // foods to exclude
+  dietaryNotes?: string;        // free text: "vegetarian", "no dairy", etc.
+  allergies?: string;           // safety: never include these foods
   budget: 'tight' | 'moderate' | 'generous';
   cookingTime: 'minimal' | 'some' | 'enjoy';
 }
@@ -246,10 +246,12 @@ Three-step wizard. Full-screen layout per **DESIGN.md §8** (centered 560px colu
 - Height in cm (optional)
 - Primary goal (radio: performance / maintenance / lean out / gain muscle)
 - Cycle-aware fuelling? (checkbox, only shown if gender=female)
-- Dietary notes (textarea: "vegetarian, no dairy, IBS-friendly...")
-- Allergies (textarea)
 
 **Step 2 — Food preferences**
+- Dietary notes (textarea: "vegetarian, no dairy, IBS-friendly...") and Allergies
+  (textarea, with a "safety: never include these foods" tertiary hint) at the
+  top — these are constraints on what the athlete eats, so they live with the
+  food info, not on the Profile.
 - Multi-input chip fields (shadcn `Input` + tag pattern) for each:
   - Breakfast staples
   - Protein sources

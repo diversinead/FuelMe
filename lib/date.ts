@@ -1,4 +1,11 @@
-import { startOfWeek, addDays, addWeeks, format, parseISO } from "date-fns";
+import {
+  startOfWeek,
+  addDays,
+  addWeeks,
+  format,
+  parseISO,
+  differenceInCalendarDays,
+} from "date-fns";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 export type Day = (typeof DAYS)[number];
@@ -29,4 +36,13 @@ export function formatWeekRange(weekId: string): string {
 export function isoDateForDay(weekId: string, day: Day): string {
   const idx = DAYS.indexOf(day);
   return format(addDays(parseISO(weekId), idx), "yyyy-MM-dd");
+}
+
+/**
+ * How far into the week we are: 0 = Monday … 6 = Sunday, clamped to [0, 6].
+ * Drives the context-aware check-in card's copy (early/mid/late week).
+ */
+export function daysIntoWeek(weekId: string, today: Date = new Date()): number {
+  const diff = differenceInCalendarDays(today, parseISO(weekId));
+  return Math.max(0, Math.min(6, diff));
 }

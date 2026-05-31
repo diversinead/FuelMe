@@ -2,16 +2,25 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Printer, RefreshCw, ShoppingBag, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Printer,
+  RefreshCw,
+  Settings2,
+  ShoppingBag,
+  X,
+} from "lucide-react";
 import { format, parseISO } from "date-fns";
 import {
   getDb,
+  blankPlanRecord,
   type Day,
   type DaySession,
   type DayTag,
+  type FoodPreferences,
   type FuellingPlan,
   type MealSlot,
   type PlannedMeal,
@@ -80,32 +89,98 @@ export default function PlanPage({ params }: { params: { weekId: string } }) {
     const plan = (await db.fuellingPlans.get(weekId)) ?? null;
     const training = (await db.trainingWeeks.get(weekId)) ?? null;
     const profile = (await db.profile.get("me")) ?? null;
-    return { plan, training, profile };
+    const foodPrefs = (await db.foodPreferences.get("me")) ?? null;
+    return { plan, training, profile, foodPrefs };
   }, [weekId]);
 
   if (data === undefined) return <LoadingState />;
-  const { plan, training, profile } = data;
+  const { plan, training, profile, foodPrefs } = data;
 
   if (plan === null) {
     return (
-      <main className="app-container py-12 max-w-2xl">
-        <BackLink />
-        <div className="mt-6">
-          <EmptyState
-            title="No plan for this week"
-            description="You haven't generated a fuelling plan for this week yet. Head to the dashboard to plan one — copy last week, adjust it, or generate fresh."
-            action={
-              <Link href="/dashboard">
-                <Button>Go to dashboard</Button>
-              </Link>
-            }
-          />
-        </div>
-      </main>
+      <NoPlanState
+        weekId={weekId}
+        training={training}
+        profile={profile}
+        foodPrefs={foodPrefs}
+      />
     );
   }
 
   return <PlanView plan={plan} training={training} profile={profile} />;
+}
+
+// Shown when a week has no fuelling plan yet. When training exists (e.g.
+// arriving straight from the training editor), the athlete can start from a
+// blank template here and then generate on this page via the Regenerate
+// dialog (the one place AI generation happens, where focus notes are entered).
+// The live query re-renders into PlanView once the blank plan is saved.
+function NoPlanState({
+  weekId,
+  training,
+}: {
+  weekId: string;
+  training: TrainingWeek | null;
+  profile: Profile | null;
+  foodPrefs: FoodPreferences | null;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const hasTraining = !!training;
+
+  async function startBlank() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await getDb().fuellingPlans.put(blankPlanRecord(weekId));
+      // Land on the populated (blank) plan with the generate dialog open.
+      router.replace(`/plan/${weekId}?generate=1`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't start a plan.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="app-container py-12 max-w-2xl">
+      <BackLink />
+      <div className="mt-6">
+        <EmptyState
+          title="No plan for this week"
+          description={
+            hasTraining
+              ? "Your training for this week is set. Start a blank plan and generate it here with your focus, or head to the dashboard to copy last week."
+              : "You haven't generated a fuelling plan for this week yet. Head to the dashboard to plan one — copy last week or start from a blank template."
+          }
+          action={
+            hasTraining ? (
+              <div className="flex flex-col items-center gap-3">
+                <Button onClick={startBlank} disabled={busy}>
+                  {busy ? "Starting…" : "Start a blank plan"}
+                </Button>
+                <Link
+                  href="/dashboard"
+                  className="font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-accent"
+                >
+                  Copy last week instead →
+                </Link>
+              </div>
+            ) : (
+              <Link href="/dashboard">
+                <Button>Go to dashboard</Button>
+              </Link>
+            )
+          }
+        />
+        {err && (
+          <div className="mt-4">
+            <ErrorBanner message={err} />
+          </div>
+        )}
+      </div>
+    </main>
+  );
 }
 
 function PlanView({
@@ -166,6 +241,20 @@ function PlanView({
   const [groceryError, setGroceryError] = React.useState<string | null>(null);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // A freshly-created "Blank template" plan has no real meals yet — surface
+  // "Generate plan" instead of "Regenerate" and (via ?generate=1) open the
+  // focus/generate dialog on arrival.
+  const isBlank = plan.meals.every((m) => !m.food.trim());
+  const autoOpenedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (searchParams?.get("generate") === "1") {
+      autoOpenedRef.current = true;
+      setRegenOpen(true);
+    }
+  }, [searchParams]);
 
   // Single-click "Grocery" flow from the plan:
   //  - no list yet            → generate, save, navigate
@@ -361,7 +450,10 @@ function PlanView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regenOpen, regenerating, editingKey, savingEdit, editTargetsOpen]);
 
-  async function handleRegenerate(selectedCriteria: string[]) {
+  async function handleRegenerate(
+    selectedCriteria: string[],
+    focusNotes: string,
+  ) {
     setRegenerating(true);
     setRegenError(null);
     try {
@@ -396,6 +488,7 @@ function PlanView({
           carbTargetsGperKg: { easy: easyCarb, hard: hardCarb },
           proteinTargetGperKg: proteinTarget,
           selectedCriteria,
+          ...(focusNotes ? { focusNotes } : {}),
         }),
       });
 
@@ -443,9 +536,15 @@ function PlanView({
       transition={{ duration: 0.24, ease: ease.out }}
       className="app-container py-8 md:py-12"
     >
-      {/* Top utility row: back link only */}
+      {/* Top utility row: back link + quick jump to food preferences */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <BackLink />
+        <Link
+          href={`/settings?tab=food&from=plan&week=${plan.weekId}`}
+          className="inline-flex items-center gap-1 font-mono text-mono-sm uppercase tracking-widest text-ink-tertiary hover:text-accent"
+        >
+          <Settings2 size={12} /> Food prefs
+        </Link>
       </div>
 
       {/* Header strip — title left, targets right. Buttons drop to the row below. */}
@@ -494,17 +593,29 @@ function PlanView({
 
       {/* Action buttons — own row, right-aligned, sealed by the bottom border */}
       <div className="mt-3 pb-5 border-b-[0.5px] border-border-default flex justify-end gap-1.5 flex-wrap">
-        <Link href={`/plan/${plan.weekId}/print?auto=1`} target="_blank">
-          <Button variant="secondary" size="sm" className="h-7 px-2.5 text-mono-sm gap-1.5">
-            <Printer size={12} /> Print
-          </Button>
-        </Link>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-7 px-2.5 text-mono-sm gap-1.5"
+          onClick={() =>
+            // Unique URL per click so the print tab always does a fresh load +
+            // fresh Dexie read — never a stale (pre-edit/regenerate) snapshot
+            // from bfcache or a reused tab.
+            window.open(
+              `/plan/${plan.weekId}/print?auto=1&t=${Date.now()}`,
+              "_blank",
+              "noopener",
+            )
+          }
+        >
+          <Printer size={12} /> Print
+        </Button>
         <Button
           size="sm"
           onClick={() => setRegenOpen(true)}
           className="h-7 px-2.5 text-mono-sm gap-1.5"
         >
-          <RefreshCw size={12} /> Regenerate
+          <RefreshCw size={12} /> {isBlank ? "Generate" : "Regenerate"}
         </Button>
         <Button
           size="sm"

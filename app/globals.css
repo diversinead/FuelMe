@@ -43,7 +43,7 @@
   --session-long: #2563eb;
   --session-rest: #6b7280;
   --session-custom: #f97316;   /* orange — non-preset / cross-training (Gym, Pilates, …) */
-  --session-race: #eab308;     /* gold — race days, distinct from hard red */
+  --session-race: var(--warning);  /* amber — matches the check-in "Partial" pill */
 
   /* Macro accents — used in the plan grid (numbers only, no chip backgrounds) */
   --macro-carbs: #FAC775;
@@ -54,8 +54,8 @@
   --session-pill-hard-fg: #fca5a5;
   --session-pill-long-bg: rgba(37, 99, 235, 0.18);
   --session-pill-long-fg: #93c5fd;
-  --session-pill-race-bg: rgba(234, 179, 8, 0.18);
-  --session-pill-race-fg: #fde047;
+  --session-pill-race-bg: color-mix(in srgb, var(--warning) 18%, transparent);
+  --session-pill-race-fg: var(--warning);
   --session-pill-neutral-bg: var(--surface-3);
   --session-pill-neutral-fg: var(--ink-secondary);
 
@@ -97,7 +97,7 @@
   --session-long: #1d4ed8;
   --session-rest: #57534e;
   --session-custom: #ea580c;
-  --session-race: #a16207;     /* dark gold for light bg */
+  --session-race: var(--warning);  /* amber — matches the check-in "Partial" pill */
 
   /* Macro accents — used in the plan grid */
   --macro-carbs: #BA7517;
@@ -108,8 +108,8 @@
   --session-pill-hard-fg: #791F1F;
   --session-pill-long-bg: #E6F1FB;
   --session-pill-long-fg: #0C447C;
-  --session-pill-race-bg: #FBF1CC;
-  --session-pill-race-fg: #6B4E00;
+  --session-pill-race-bg: color-mix(in srgb, var(--warning) 18%, transparent);
+  --session-pill-race-fg: var(--warning);
   --session-pill-neutral-bg: var(--surface-3);
   --session-pill-neutral-fg: var(--ink-secondary);
 

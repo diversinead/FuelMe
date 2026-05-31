@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { FoodPreferences } from "@/lib/db";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioItem } from "@/components/ui/radio-group";
 import { ChipInput } from "./ChipInput";
 import { FOOD_SUGGESTIONS } from "@/lib/defaults";
@@ -47,6 +48,31 @@ export function FoodPrefsStep({ value, onChange }: Props) {
         Tap a suggestion or type your own. Even a rough list sharpens the plan —
         you can refine it anytime in Settings.
       </p>
+
+      <div className="space-y-5">
+        <div>
+          <Label htmlFor="dietary">Dietary notes</Label>
+          <Textarea
+            id="dietary"
+            value={value.dietaryNotes ?? ""}
+            onChange={(e) => set("dietaryNotes", e.target.value)}
+            placeholder="vegetarian, no dairy, IBS-friendly…"
+          />
+        </div>
+        <div>
+          <Label htmlFor="allergies">Allergies</Label>
+          <p className="text-body-sm text-ink-tertiary -mt-1 mb-2 leading-snug">
+            Safety: these foods are never included in your plan.
+          </p>
+          <Textarea
+            id="allergies"
+            value={value.allergies ?? ""}
+            onChange={(e) => set("allergies", e.target.value)}
+            placeholder="nuts, shellfish…"
+          />
+        </div>
+      </div>
+
       <div className="space-y-5">
         {CHIP_FIELDS.map((f) => (
           <div key={f.key}>

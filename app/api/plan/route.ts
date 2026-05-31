@@ -17,23 +17,41 @@ interface PlanRequestBody {
   carbTargetsGperKg?: { easy?: [number, number]; hard?: [number, number] };
   proteinTargetGperKg?: [number, number];
   selectedCriteria?: string[];
+  focusNotes?: string;
 }
 
 // Build the system prompt (generated from config/nutritionRules.json),
-// appending any user-selected coaching emphasis.
-function buildSystemPrompt(selectedCriteria: string[] | undefined): string {
-  const base = buildPlanSystemPrompt();
+// appending any user-selected coaching emphasis and free-text focus notes.
+function buildSystemPrompt(
+  selectedCriteria: string[] | undefined,
+  focusNotes: string | undefined,
+): string {
+  let prompt = buildPlanSystemPrompt();
+
   const criteria = criteriaForIds(selectedCriteria);
-  if (criteria.length === 0) return base;
-  const lines = criteria
-    .map((c) => `- ${c.label}: ${c.promptGuidance}`)
-    .join("\n");
-  return `${base}
+  if (criteria.length > 0) {
+    const lines = criteria
+      .map((c) => `- ${c.label}: ${c.promptGuidance}`)
+      .join("\n");
+    prompt += `
 
 # Additional emphasis this week (user-selected priorities)
 
 Apply these on top of everything above. They are the athlete's explicit focus for this plan:
 ${lines}`;
+  }
+
+  const focus = focusNotes?.trim();
+  if (focus) {
+    prompt += `
+
+# The athlete's own focus this week (free text)
+
+The athlete typed this when asking for the plan. Honour it wherever it does not conflict with the hard constraints above:
+"${focus}"`;
+  }
+
+  return prompt;
 }
 
 function isValidBody(body: unknown): body is PlanRequestBody {
@@ -74,7 +92,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const selectedCriteria = (body as PlanRequestBody).selectedCriteria;
+    const { selectedCriteria, focusNotes } = body as PlanRequestBody;
     const matchedCriteria = criteriaForIds(selectedCriteria).map((c) => c.id);
 
     const completion = await openai.chat.completions.create({
@@ -82,7 +100,10 @@ export async function POST(req: Request) {
       temperature: OPENAI_TEMPERATURE,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: buildSystemPrompt(selectedCriteria) },
+        {
+          role: "system",
+          content: buildSystemPrompt(selectedCriteria, focusNotes),
+        },
         { role: "user", content: JSON.stringify(body) },
       ],
     });

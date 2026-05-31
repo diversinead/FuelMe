@@ -5,7 +5,6 @@ import type { Profile } from "@/lib/db";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -113,26 +112,6 @@ export function ProfileStep({ value, onChange }: Props) {
           </span>
         </label>
       )}
-
-      <div>
-        <Label htmlFor="dietary">Dietary notes</Label>
-        <Textarea
-          id="dietary"
-          value={value.dietaryNotes ?? ""}
-          onChange={(e) => set("dietaryNotes", e.target.value)}
-          placeholder="vegetarian, no dairy, IBS-friendly…"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="allergies">Allergies</Label>
-        <Textarea
-          id="allergies"
-          value={value.allergies ?? ""}
-          onChange={(e) => set("allergies", e.target.value)}
-          placeholder="nuts, shellfish…"
-        />
-      </div>
     </div>
   );
 }

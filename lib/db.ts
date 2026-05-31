@@ -12,8 +12,6 @@ export interface Profile {
   weightKg: number;
   heightCm?: number;
   goal: Goal;
-  dietaryNotes?: string;
-  allergies?: string;
   cycleTracking?: boolean;
 }
 
@@ -31,6 +29,10 @@ export interface FoodPreferences {
   snacks: string[];
   drinks: string[];
   avoid: string[];
+  // Dietary constraints live here (with the other food info) rather than on
+  // Profile — they're rules about what the athlete eats, not who they are.
+  dietaryNotes?: string; // free text: "vegetarian", "no dairy", IBS-friendly…
+  allergies?: string; // safety — never include these foods
   budget: Budget;
   cookingTime: CookingTime;
 }
@@ -161,6 +163,8 @@ export interface AIFeedback {
   generatedAt: string;
 }
 
+export type CheckInStatus = "draft" | "submitted";
+
 export interface CheckIn {
   id: string; // == weekId
   weekId: string;
@@ -169,6 +173,10 @@ export interface CheckIn {
   energyRating: 1 | 2 | 3 | 4 | 5;
   sessionsCompleted: number;
   freeNotes?: string;
+  // 'draft' = in-progress, autosaved as the athlete logs through the week.
+  // 'submitted' = finalised for AI feedback. Editing a submitted check-in
+  // reverts it to 'draft' and clears aiFeedback (re-submit to refresh).
+  status: CheckInStatus;
   aiFeedback?: AIFeedback;
 }
 
@@ -191,6 +199,68 @@ class FuelDB extends Dexie {
       groceryLists: "id, weekId, generatedAt",
       checkIns: "id, weekId, submittedAt",
     });
+
+    // v2 — dietaryNotes + allergies moved from Profile to FoodPreferences.
+    // Indexes are unchanged (these fields aren't indexed); the upgrade just
+    // relocates existing data so nothing is lost.
+    this.version(2)
+      .stores({
+        profile: "id",
+        foodPreferences: "id",
+        trainingWeeks: "id, weekStart",
+        fuellingPlans: "id, weekId, generatedAt",
+        groceryLists: "id, weekId, generatedAt",
+        checkIns: "id, weekId, submittedAt",
+      })
+      .upgrade(async (tx) => {
+        const profileTable = tx.table("profile");
+        const prefsTable = tx.table("foodPreferences");
+        const profile = (await profileTable.get("me")) as
+          | (Record<string, unknown> & { id: "me" })
+          | undefined;
+        if (!profile) return;
+        const dietaryNotes = profile.dietaryNotes as string | undefined;
+        const allergies = profile.allergies as string | undefined;
+        if (dietaryNotes === undefined && allergies === undefined) return;
+
+        const prefs = (await prefsTable.get("me")) as
+          | (Record<string, unknown> & { id: "me" })
+          | undefined;
+        if (prefs) {
+          await prefsTable.put({
+            ...prefs,
+            // Keep any value already on prefs; otherwise take the profile's.
+            dietaryNotes: prefs.dietaryNotes ?? dietaryNotes,
+            allergies: prefs.allergies ?? allergies,
+          });
+          // Strip the relocated fields from the profile record.
+          delete profile.dietaryNotes;
+          delete profile.allergies;
+          await profileTable.put(profile);
+        }
+        // If no prefs record exists, leave the fields on profile so the data
+        // isn't lost (onboarding always writes both, so this is an edge case).
+      });
+
+    // v3 — CheckIn gains a draft/submitted status. Existing records were all
+    // created by the old explicit-save flow, so they're treated as submitted.
+    this.version(3)
+      .stores({
+        profile: "id",
+        foodPreferences: "id",
+        trainingWeeks: "id, weekStart",
+        fuellingPlans: "id, weekId, generatedAt",
+        groceryLists: "id, weekId, generatedAt",
+        checkIns: "id, weekId, submittedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("checkIns")
+          .toCollection()
+          .modify((c: Record<string, unknown>) => {
+            if (c.status === undefined) c.status = "submitted";
+          });
+      });
   }
 }
 
@@ -251,4 +321,47 @@ export async function clonePlan(
   }
 
   return { clonedPlan, clonedTraining };
+}
+
+const ALL_DAYS: Day[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const ALL_SLOTS: MealSlot[] = [
+  "breakfast",
+  "post_am",
+  "lunch",
+  "afternoon",
+  "dinner",
+];
+
+/**
+ * A blank fuelling plan for a week — 35 empty meal cells + 7 zeroed day totals.
+ * Used by the "Blank template" path (dashboard chooser / no-plan state): the
+ * athlete lands on the plan page and fills it via the Regenerate dialog (the
+ * one place AI generation happens, where focus notes are entered) or by hand.
+ */
+export function blankPlanRecord(weekId: string): FuellingPlan {
+  const meals: PlannedMeal[] = ALL_DAYS.flatMap((day) =>
+    ALL_SLOTS.map((slot) => ({
+      day,
+      slot,
+      food: "",
+      carbsG: 0,
+      proteinG: 0,
+    })),
+  );
+  const dayTotals: DayTotal[] = ALL_DAYS.map((day) => ({
+    day,
+    carbsG: 0,
+    proteinG: 0,
+    tag: "rest" as const,
+  }));
+  return {
+    id: weekId,
+    weekId,
+    generatedAt: new Date().toISOString(),
+    rules: [],
+    targets: { carbsRangeG: "", proteinRangeG: "" },
+    meals,
+    dayTotals,
+    manuallyEdited: true,
+  };
 }

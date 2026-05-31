@@ -15,6 +15,7 @@ import {
   type TrainingWeek,
 } from "@/lib/db";
 import { SESSION_LABELS } from "@/lib/defaults";
+import { criteriaForIds } from "@/lib/coachingCriteria";
 import { planPrintCss } from "@/styles/print-plan";
 
 const DAYS: Day[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -114,6 +115,10 @@ function PlanSheet({
     (training?.sessions ?? []).map((s) => [s.day, s] as const),
   );
   const weekDate = format(parseISO(plan.weekId), "EEE d MMM");
+  // Match the in-app plan view: rules come from the applied coaching criteria,
+  // not the legacy AI `plan.rules` array. When more than 3 are shown, break to
+  // a fresh page so they don't squash the fuelling grid.
+  const coachingRules = criteriaForIds(plan.appliedCriteria);
 
   return (
     <>
@@ -199,12 +204,15 @@ function PlanSheet({
           })}
         </div>
 
-        {plan.rules.length > 0 && (
-          <div className="rules">
-            {plan.rules.map((rule, i) => (
-              <div key={i}>
-                <div className="rule-num">Rule {String(i + 1).padStart(2, "0")}</div>
-                <div className="rule-text">{rule}</div>
+        {coachingRules.length > 0 && (
+          <div
+            className={`rules${coachingRules.length > 3 ? " page-break" : ""}`}
+          >
+            <div className="rules-heading">Coaching rules</div>
+            {coachingRules.map((c) => (
+              <div key={c.id}>
+                <div className="rule-num">{c.label}</div>
+                <div className="rule-text">{c.rule}</div>
               </div>
             ))}
           </div>

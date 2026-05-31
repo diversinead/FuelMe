@@ -5,8 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { COACHING_CRITERIA } from "@/lib/coachingCriteria";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ease } from "@/lib/motion";
 import { CoachingCriteriaChip } from "./CoachingCriteriaChip";
+
+const FOCUS_MAX = 400;
 
 /**
  * Regenerate dialog (tasks/RegenerateDialog.md). Multi-select coaching-criteria
@@ -23,14 +27,18 @@ export function RegenerateDialog({
   open: boolean;
   generating: boolean;
   error: string | null;
-  onGenerate: (selectedIds: string[]) => void;
+  onGenerate: (selectedIds: string[], focusNotes: string) => void;
   onClose: () => void;
 }) {
   const [selected, setSelected] = React.useState<string[]>([]);
+  const [focusNotes, setFocusNotes] = React.useState("");
 
-  // Fresh selection every time the dialog opens — no persistence.
+  // Fresh selection + focus text every time the dialog opens — no persistence.
   React.useEffect(() => {
-    if (open) setSelected([]);
+    if (open) {
+      setSelected([]);
+      setFocusNotes("");
+    }
   }, [open]);
 
   function toggle(id: string) {
@@ -103,6 +111,25 @@ export function RegenerateDialog({
               ))}
             </div>
 
+            <div className="mt-5">
+              <Label htmlFor="regen-focus" className="text-ink-secondary">
+                Things to focus on
+              </Label>
+              <Textarea
+                id="regen-focus"
+                value={focusNotes}
+                onChange={(e) =>
+                  setFocusNotes(e.target.value.slice(0, FOCUS_MAX))
+                }
+                disabled={generating}
+                placeholder="Anything else for the AI — e.g. lighter dinners, more variety, batch-cook Sunday, easing back after illness."
+                className="mt-1.5 min-h-[72px]"
+              />
+              <p className="mt-1 text-mono-sm text-ink-tertiary text-right">
+                {focusNotes.length}/{FOCUS_MAX}
+              </p>
+            </div>
+
             {error && (
               <div
                 className="mt-5 p-3 rounded-button"
@@ -122,7 +149,7 @@ export function RegenerateDialog({
                 Cancel
               </Button>
               <Button
-                onClick={() => onGenerate(selected)}
+                onClick={() => onGenerate(selected, focusNotes.trim())}
                 disabled={generating}
               >
                 {generating
